@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 mt-3">
+        {% if _downloaded %}
+        <button type="button" class="btn btn-outline-success" disabled>Available on Plex</button>
+        {% else %}
+        <div class="dropdown float-end">
+            <button class="btn btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Download This Video
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname) }}">Best Quality</a></li>
+                <li><hr class="dropdown-divider"></li>
+                {% for stream in streams %}
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname, itag=stream['itag']) }}">{{ stream['resolution'] }}@{{ stream['fps'] }}fps</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col mt-3">
+        <div class="card">
+            <img src="{{ thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+            <div class="card-body">
+                <h5 class="card-title">{{ title }}</h5>
+                <h6 class="card-subtitle mb-2 text-body-secondary">Uploaded By: {{ author }}</h6>
+                <p class="card-text">
+                    {% if description %}
+                    <div style="white-space: pre-wrap;">{{ description }}</div>
+                    {% else %}
+                    <i>No description available.</i>
+                    {% endif %}
+                    <hr>
+                    <span class="text-small">Length: {{ length }}</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

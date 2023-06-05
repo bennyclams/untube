@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  untube:
+    hostname: untube
+    container_name: untube
+    image: gleblanc/untube:latest
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      ADMIN_PASSWORD: password
+      PLEX_URL: "http://example.com"
+      PLEX_TOKEN: "token"
+    volumes:
+       - /hdd/untube:/hdd/untube
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+  untube-worker:
+    hostname: untube-worker
+    container_name: untube-worker
+    image: gleblanc/untube:latest
+    volumes:
+      - /hdd/untube:/hdd/untube
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      MEDIA_DIR: "/hdd/untube"
+    entrypoint:
+      - "python3"
+      - "-u"
+      - "-m"
+      - "adless.worker"
+  redis:
+    hostname: redis-cache
+    container_name: redis
+    image: redis:6.2-alpine
+    restart: always
+    command: redis-server --save 20 1 --loglevel warning

@@ -1,0 +1,9 @@
+pytube
+clilib
+requests
+flask
+flask-session
+gunicorn
+ffmpeg-python
+redis
+plexapi
