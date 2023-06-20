@@ -2,6 +2,7 @@ from datetime import timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_session import Session
 from adless.tools import get_video_info, get_playlist_info, unshorten
+from adless.api import api
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
 from hashlib import sha1
@@ -11,6 +12,7 @@ import os
 
 
 app = Flask(__name__)
+app.register_blueprint(api, url_prefix="/api")
 db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 app.config["DEBUG"] = (os.getenv("DEBUG", "false").lower() == "true")
 app.config["SESSION_TYPE"] = "redis"
@@ -21,7 +23,7 @@ Session(app)
 
 @app.before_request
 def validate_authenticated():
-    if request.path.startswith("/login"):
+    if request.path.startswith("/login") or request.path.startswith("/manifest.json"):
         return
     else:
         if not session.get("authenticated", False):
@@ -36,7 +38,11 @@ def index():
     download_queue = []
     downloads = []
     for key in recent_search_keys:
-        info = json.loads(db.get(key))
+        try:
+            info = json.loads(db.get(key))
+        except TypeError:
+            db.lrem("recent_searches", 0, key)
+            continue
         if info["_type"] == "video":
             info["length"] = str(timedelta(seconds=info["length"]))
         info["title"] = info["title"][:30] + "..." if len(info["title"]) > 30 else info["title"]
@@ -81,10 +87,18 @@ def login():
 
 @app.route("/info/", methods=["POST"])
 def content_info():
-    hashed_url = sha1(request.form["url"].encode("utf-8")).hexdigest()
-    parsed_url = urlparse(request.form["url"])
+    if "url" not in request.form:
+        if "text" in request.form:
+            url = request.form["text"]
+        else:
+            flash("Invalid URL", "warning")
+            return redirect(url_for("index"))
+    else:
+        url = request.form["url"]
+    hashed_url = sha1(url.encode("utf-8")).hexdigest()
+    parsed_url = urlparse(url)
     if parsed_url.netloc == "youtu.be":
-        new_url = unshorten(request.form["url"])
+        new_url = unshorten(url)
         hashed_url = sha1(new_url.encode("utf-8")).hexdigest()
         parsed_url = urlparse(new_url)
     url_args = parse_qs(parsed_url.query)
@@ -118,24 +132,22 @@ def playlist_info():
     playlist_id = request.args.get("list")
     full_url = f"https://www.youtube.com/playlist?list={playlist_id}"
     info = get_playlist_info(full_url)
+    for video in info["videos"]:
+        if video["description"]:
+            video["description"] = video["description"][:100] + "..." if len(video["description"]) > 100 else video["description"]
     return render_template("playlist_info.html", **info)
 
 @app.route("/queue/", methods=["GET"])
 def queue():
     content_key = request.args.get("id")
     itag = request.args.get("itag", None)
+    only_audio = (request.args.get("only_audio", "no") == "yes")
     if db.exists(content_key):
         info = json.loads(db.get(content_key))
-        if db.exists("download_queue"):
-            if content_key.encode() in db.lrange("download_queue", 0, -1):
-                flash("Content already in download queue", "warning")
-                if info["_type"] == "video":
-                    return redirect(url_for("video_info", v=info["id"]))
-                elif info["_type"] == "playlist":
-                    return redirect(url_for("playlist_info", list=info["id"]))
         queue_info = {
             "id": content_key,
-            "itag": itag
+            "itag": itag,
+            "only_audio": only_audio
         }
         db.lpush("download_queue", json.dumps(queue_info))
         flash(f"Successfully added {info['_type']} '{info['title']}' to the download queue", "success")
@@ -146,3 +158,40 @@ def queue():
     else:
         flash("Content not yet indexed. Try searching for this content by non-shortened URL.", "warning")
         return redirect(url_for("index"))
+
+@app.route("/manifest.json", methods=["GET"])
+def manifest():
+    return {
+        "id": "io.untube",
+        "short_name": "Untube",
+        "name": "Untube",
+        "description": "A tool for downloading YouTube videos and playlists via their share links for offline viewing.",
+        "display": "standalone",
+        "start_url": "/",
+        "scope": "/",
+        "theme_color": "#2b3035",
+        "background_color": "#212529",
+        "icons": [
+            {
+                "src": "/static/web/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            },
+            {
+                "src": "/static/web/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png"
+            }
+        ],
+        "share_target": {
+            "action": "/info/",
+            "method": "POST",
+            "enctype": "application/x-www-form-urlencoded",
+            "params": {
+                "_url": "url",
+                "url": "text",
+                "text": "text",
+                "title": "title"
+            }
+        }
+    }

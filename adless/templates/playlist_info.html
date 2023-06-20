@@ -3,7 +3,86 @@
 {% block content %}
 <div class="row">
     <div class="col-12 mt-3">
-        <a type="button" class="float-end btn btn-success" href="{{ url_for('queue', id=_keyname) }}">Download This Playlist</a>
+        <a href="https://www.youtube.com/playlist?list={{ id }}" class="btn btn-outline-danger mr-1" target="_blank"
+            rel="noopener noreferrer">Watch on Youtube</a>
+        <!-- <a type="button" class="float-end btn btn-success" href="{{ url_for('queue', id=_keyname) }}">Download This Playlist</a> -->
+        <!-- Button trigger modal -->
+        <button type="button" class="btn btn-outline-success float-end" data-bs-toggle="modal" data-bs-target="#optionsModal">
+            Download . . .
+        </button>
+
+        <!-- Modal -->
+        <div class="modal fade" id="optionsModal" tabindex="-1" aria-labelledby="optionsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="optionsModalLabel">Download Options</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="" id="all-audio-only">
+                                    <label class="form-check-label" for="all-audio-only">
+                                        Audio Only (All)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row content-options">
+                            {% for video in videos %}
+                            {% if not video._unavailable %}
+                            <div class="col-4 mb-2 content-item" id="card_{{ video['id'] }}">
+                                <div class="card video-card" id="video_{{ video['id'] }}" data-unavailable="{% if _unavailable %}true%{ else %}false{% endif %}" data-keyname="{{ video._keyname }}">
+                                    <div class="card-header">
+                                        {{ video.title | truncate(30, end=' ...') }}
+                                        <button type="button" class="btn-close float-end remove-item" data-remove="#card_{{ video['id'] }}" aria-label="Close"></button>
+                                    </div>
+                                    <img src="{{ video.thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+                                    <div class="card-body">
+                                        <p class="card-text">
+                                            <div class="row" style="align-items: center;">
+                                                <div class="col-6">
+                                                    <select class="form-select quality-select" id="qualitySelect_{{ video['id'] }}" aria-label="Video Quality Select">
+                                                        {% for stream in video.streams %}
+                                                        <option value="{{ stream['itag'] }}">{{ stream['resolution'] }}@{{ stream['fps'] }}fps</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input audio-only-check" type="checkbox" value="" id="audioOnly_{{ video['id'] }}">
+                                                        <label class="form-check-label" for="audioOnlyCheck">
+                                                            Audio Only
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" id="submitQueue">Queue</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- <div class="dropdown float-end">
+            <button class="btn btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Download This Playlist
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" id="">Download as Video</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname, only_audio='yes') }}">Download as MP3</a></li>
+            </ul>
+        </div> -->
     </div>
     <div class="col-12 mt-3">
         <div class="card">
@@ -31,7 +110,13 @@
             {% for video in videos %}
             <div class="col-4 mb-2">
                 <div class="card">
+                    {% if video._unavailable %}
+                    <div class="card-header">
+                        Unavailable
+                    </div>
+                    {% else %}
                     <img src="{{ video.thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+                    {% endif %}
                     <div class="card-body">
                         <h5 class="card-title">{{ video.title }}</h5>
                         <h6 class="card-subtitle mb-2 text-body-secondary">Uploaded By: {{ video.author }}</h6>
@@ -46,8 +131,125 @@
                     </div>
                 </div>
             </div>
-            {% endfor %}  
+            {% endfor %}
         </div>
     </div>
 </div>
+{% endblock %}
+{% block custom_scripts %}
+<script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+<script>
+    function refreshMasonry() {
+        let container = document.querySelector('.content-options');
+        let msnry = new Masonry( container, {
+            itemSelector: '.content-item'
+        });
+    }
+    $(document).ready(function(){
+        $('.quality-select').each(function(){
+            let id = $(this).attr("id");
+            id = id.split("_");
+            if (id.length > 2) {
+                id.shift()
+                id = id.join("_")
+            } else {
+                id = id[1]
+            }
+            if ($("#audioOnly_" + id).is(":checked")) {
+                $("#qualitySelect_" + id).prop("disabled", true);
+            } else {
+                $("#qualitySelect_" + id).prop("disabled", false);
+            }
+        });
+        $('#optionsModal').on( 'shown.bs.modal', function() {
+            refreshMasonry();
+        });
+    });
+
+    $(".audio-only-check").click(function () {
+        let id = $(this).attr("id");
+        id = id.split("_");
+        if (id.length > 2) {
+            id.shift()
+            id = id.join("_")
+        } else {
+            id = id[1]
+        }
+        if ($(this).is(":checked")) {
+            $("#qualitySelect_" + id).prop("disabled", true);
+        } else {
+            $("#qualitySelect_" + id).prop("disabled", false);
+        }
+    });
+
+    $("#submitQueue").click(function () {
+        let queue = [];
+        $(".video-card").each(function () {
+            if ($(this).data("unavailable") == true) {
+                return;
+            }
+            let id = $(this).attr("id");
+            id = id.split("_");
+            if (id.length > 2) {
+                id.shift()
+                id = id.join("_")
+            } else {
+                id = id[1]
+            }
+            let quality = null
+            let audioOnly = $("#audioOnly_" + id).is(":checked");
+            let keyname = $(this).data("keyname")
+            if (!audioOnly) {
+                quality = $("#qualitySelect_" + id).val();
+            }
+            queue.push({
+                "id": keyname,
+                "quality": quality,
+                "audioOnly": audioOnly
+            });
+        });
+        console.log(queue)
+        let final = {
+            videos: queue,
+        }
+        $.ajax({
+            type: "POST",
+            url: "/api/v1/queue/",
+            data: JSON.stringify(final),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                console.log(data);
+                window.location.reload()
+            },
+            failure: function (errMsg) {
+                window.location.reload()
+            }
+        });
+    });
+
+    $("#all-audio-only").click(function () {
+        if ($(this).is(":checked")) {
+            $(".audio-only-check").each(function () {
+                $(this).prop("checked", true);
+            });
+            $(".quality-select").each(function () {
+                $(this).prop("disabled", true);
+            });
+        } else {
+            $(".audio-only-check").each(function () {
+                $(this).prop("checked", false);
+            });
+            $(".quality-select").each(function () {
+                $(this).prop("disabled", false);
+            });
+        }
+    });
+
+    $(".remove-item").click(function () {
+        let id = $(this).data("remove")
+        $(id).remove();
+        refreshMasonry();
+    });
+</script>
 {% endblock %}

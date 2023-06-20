@@ -1,5 +1,5 @@
 from clilib.builders.app import EasyCLI
-from adless.tools import get_video, get_playlist_videos
+from adless.tools import get_playlist_info, get_video, get_playlist_videos
 from pathlib import Path
 import redis
 import time
@@ -7,10 +7,16 @@ import json
 import os
 
 db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
-media_dir = os.getenv("MEDIA_DIR", "/tmp/untube")
-media_dir = Path(media_dir)
-if not media_dir.exists():
-    media_dir.mkdir(parents=True)
+video_dir = os.getenv("VIDEO_DIR", "/tmp/untube")
+audio_dir = os.getenv("AUDIO_DIR", "/tmp/untube")
+audio_storage_format = os.getenv("AUDIO_FILENAME", "{title}")
+video_dir = Path(video_dir)
+audio_dir = Path(audio_dir)
+if not audio_dir.exists():
+    audio_dir.mkdir(parents=True)
+if not video_dir.exists():
+    video_dir.mkdir(parents=True)
+    
 
 def worker():
     """
@@ -22,14 +28,16 @@ def worker():
             qi = db.lpop("download_queue")
             if qi:
                 item = json.loads(qi)
+                if "only_audio" not in item:
+                    item["only_audio"] = False
                 key_name = item["id"]
                 info = json.loads(db.get(key_name))
                 if info["_type"] == "video":
                     full_url = f"https://www.youtube.com/watch?v={info['id']}"
-                    get_video(full_url, media_dir, itag=item["itag"])
+                    get_video(full_url, audio_dir if item["only_audio"] else video_dir, itag=item["itag"], only_audio=item["only_audio"])
                 elif info["_type"] == "playlist":
                     full_url = f"https://www.youtube.com/playlist?list={info['id']}"
-                    get_playlist_videos(full_url, media_dir)
+                    get_playlist_videos(full_url, audio_dir if item["only_audio"] else video_dir, only_audio=item["only_audio"])
                 else:
                     print(f"[{info['id']}] Warning: Invalid type: {info['_type']}")
                     continue
