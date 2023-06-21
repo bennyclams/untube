@@ -11,9 +11,13 @@ them with ffmpeg. The merge uses a copy, which should be fine in most scenarios,
 ## Future Plans
 
     * Add support for downloading private videos and playlists
-    * Add support for downloading videos as audio only
 
 ## Quickstart
 The easiest way to get started is to just run the docker-compose provided and mount the plex media directory you want to use for
 your downloads as the media directory set in the worker's environment. The web interface is accessible via port 8000 by default, and
 the default admin password is just 'password'. You can change this by setting the environment variable `ADMIN_PASSWORD`.
+
+## Mobile
+Untube is mobile friendly, and the UI is the same as the desktop version. On Android devices, you can install Untube as a PWA which
+will allow you to use the system share dialog to share videos directly from YouTube to Untube. This will automatically open the Untube
+PWA to the video or playlist info page, which will allow you to download the video or playlist.

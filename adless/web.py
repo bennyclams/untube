@@ -29,6 +29,7 @@ def validate_authenticated():
         if not session.get("authenticated", False):
             return redirect(url_for("login"))
 
+
 @app.route("/")
 def index():
     recent_search_keys = db.lrange("recent_searches", 0, 9)
@@ -73,6 +74,7 @@ def index():
     }
     return render_template("index.html", **data)
 
+
 @app.route("/login/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -84,6 +86,7 @@ def login():
             return redirect(url_for("login"))
     else:
         return render_template("login.html")
+
 
 @app.route("/info/", methods=["POST"])
 def content_info():
@@ -118,6 +121,7 @@ def content_info():
         flash("Invalid URL", "warning")
         return redirect(url_for("index"))
     
+
 @app.route("/info/video/", methods=["GET"])
 def video_info():
     video_id = request.args.get("v")
@@ -136,6 +140,7 @@ def playlist_info():
         if video["description"]:
             video["description"] = video["description"][:100] + "..." if len(video["description"]) > 100 else video["description"]
     return render_template("playlist_info.html", **info)
+
 
 @app.route("/queue/", methods=["GET"])
 def queue():
@@ -158,6 +163,7 @@ def queue():
     else:
         flash("Content not yet indexed. Try searching for this content by non-shortened URL.", "warning")
         return redirect(url_for("index"))
+
 
 @app.route("/manifest.json", methods=["GET"])
 def manifest():
