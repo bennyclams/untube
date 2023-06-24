@@ -6,4 +6,7 @@ WORKDIR /app
 RUN apt update && apt install -y ffmpeg
 COPY . /app
 RUN pip install -r requirements.txt
+# Run patch for pytube
+RUN bash /app/patch.sh
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 ENTRYPOINT [ "gunicorn", "-b 0.0.0.0", "--workers=8", "--threads=6", "--chdir", "/app", "adless.web:app" ]

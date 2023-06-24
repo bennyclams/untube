@@ -11,7 +11,7 @@ import json
 import os 
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.register_blueprint(api, url_prefix="/api")
 db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 app.config["DEBUG"] = (os.getenv("DEBUG", "false").lower() == "true")
