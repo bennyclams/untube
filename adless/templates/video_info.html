@@ -6,7 +6,7 @@
         <a href="https://www.youtube.com/watch?v={{ id }}" class="btn btn-outline-danger mr-1" target="_blank" rel="noopener noreferrer">Watch on Youtube</a>
         {% if _downloaded %}
         <button type="button" class="btn btn-outline-success" disabled>Available on Plex</button>
-        {% else %}
+        {% endif %}
         <div class="dropdown float-end">
             <button class="btn btn-outline-success dropdown-toggle" {% if _unavailable %}disabled{% endif %} type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 Download This Video
@@ -21,7 +21,6 @@
                 {% endfor %}
             </ul>
         </div>
-        {% endif %}
     </div>
     <div class="col-md-6 offset-md-3 mt-3">
         <div class="card">
