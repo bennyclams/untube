@@ -4,6 +4,8 @@
 mkdir /tmp/patch
 cd /tmp/patch
 cp $(pip3 show pytube | grep Location: | cut -d ' ' -f2)/pytube/cipher.py .
+cp $(pip3 show pytube | grep Location: | cut -d ' ' -f2)/pytube/streams.py .
 cp /app/patch.py .
 python3 patch.py
 cp cipher.py $(pip3 show pytube | grep Location: | cut -d ' ' -f2)/pytube/cipher.py
+cp streams.py $(pip3 show pytube | grep Location: | cut -d ' ' -f2)/pytube/streams.py

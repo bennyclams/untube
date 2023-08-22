@@ -11,21 +11,34 @@
 </head>
 
 <body>
-  <div class="container mb-4">
+  <div class="container-fluid mb-4">
     <div class="row">
-      <div class="col-12 mt-3">
-        <nav class="navbar bg-body-tertiary">
+      <div class="col-md-6 offset-md-3 mt-3">
+        <nav class="navbar navbar-expand-lg bg-body-tertiary">
           <div class="container-fluid">
-            <a class="navbar-brand" href="/">UnTube</a>
-            <form class="d-none d-md-flex" action="/info/" method="post" role="search">
-              <input class="form-control me-2" type="search" name="url"
-                placeholder="https://www.youtube.com/watch?v=..." aria-label="Search">
-              <button class="btn btn-outline-success" type="submit">Search</button>
-            </form>
+            <a class="navbar-brand" href="#">Untube</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+              <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                  <a class="nav-link {% if page == 'home' %}active{% endif %}" aria-current="page" href="/">Home</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link {% if page == 'downloads' %}active{% endif %}" href="/downloads/">Available Downloads</a>
+                </li>
+              </ul>
+              <form class="d-none d-md-flex" action="/info/" method="post" role="search">
+                <input class="form-control me-2" type="search" name="url"
+                  placeholder="https://www.youtube.com/watch?v=..." aria-label="Search">
+                <button class="btn btn-outline-success" type="submit">Search</button>
+              </form>
+            </div>
           </div>
         </nav>
       </div>
-      <div class="col-12 mt-3">
+      <div class="col-md-6 offset-md-3 mt-3">
         {% with messages = get_flashed_messages(with_categories=true) %}
         <!-- Categories: success (green), info (blue), warning (yellow), danger (red) -->
         {% if messages %}
@@ -46,6 +59,7 @@
     </div>
     {% block content %} {% endblock %}
   </div>
+  {% block post_content %} {% endblock %}
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
     integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
     crossorigin="anonymous"></script>

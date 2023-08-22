@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <button class="btn btn-danger" id="deleteSelectedDownloads">Delete Selected</button>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6 offset-md-3 downloads-content">
+        <div class="row" data-masonry='{"itemSelector": ".col-md-3"}'>
+            {% for download in downloads %}
+            <div class="col-md-3 mt-3 download-item">
+                <div class="card download-card {% if download.delete_queue %}border-danger{% endif %}" id="{{ download._keyname }}">
+                    {% if not download._unavailable %}
+                    <img src="{{ download.thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+                    {% endif %}
+                    <div class="card-body">
+                        <h5 class="card-title">{{ download.title }}</h5>
+                        <h6 class="card-subtitle mb-2 text-muted">{{ download.author }}</h6>
+                        <p class="card-text">
+                            {% if download.description %}
+                            {{ download.description }}
+                            {% else %}
+                            <i>No description available.</i>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <a href="#" class="stretched-link select-video"></a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block custom_scripts %}
+<script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+<script>
+    $(document).ready(function () {
+        $('.select-video').click(function (e) {
+            e.preventDefault();
+            if ($(this).parent().hasClass('border-danger')) {
+                // Don't re-queue a video that's already queued for deletion
+                return;
+            }
+            if ($(this).parent().hasClass('border-primary')) {
+                $(this).parent().removeClass('border-primary');
+            } else {
+                $(this).parent().addClass('border-primary');
+            }
+        });
+        $('#deleteSelectedDownloads').click(function (e) {
+            e.preventDefault();
+            let selectedDownloads = $('.border-primary');
+            if (selectedDownloads.length > 0) {
+                let toDelete = [];
+                selectedDownloads.each(function (index, element) {
+                    toDelete.push($(element).attr('id'));
+                });
+                $.ajax({
+                    url: '/api/v1/delete/',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        'videos': toDelete
+                    }),
+                    success: function (data) {
+                        if (data['status'] == 'ok') {
+                            location.reload();
+                        }
+                    }
+                });
+            }
+        });
+    });
+</script>
+{% endblock %}

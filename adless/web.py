@@ -1,7 +1,7 @@
 from datetime import timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_session import Session
-from adless.tools import get_video_info, get_playlist_info, unshorten
+from adless.tools import get_video_info, get_playlist_info, unshorten, get_fs_downloads, get_progress
 from adless.api import api
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
@@ -13,7 +13,7 @@ import os
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.register_blueprint(api, url_prefix="/api")
-db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379").strip())
 app.config["DEBUG"] = (os.getenv("DEBUG", "false").lower() == "true")
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = db
@@ -70,7 +70,8 @@ def index():
     data = {
         "recent_searches": recent_searches,
         "recent_downloads": downloads,
-        "download_queue": download_queue
+        "download_queue": download_queue,
+        "page": "home"
     }
     return render_template("index.html", **data)
 
@@ -128,6 +129,7 @@ def video_info():
     full_url = f"https://www.youtube.com/watch?v={video_id}"
     info = get_video_info(full_url)
     info["length"] = str(timedelta(seconds=info["length"]))
+    info["progress"] = get_progress(info["title"])
     return render_template("video_info.html", **info)
 
 
@@ -164,6 +166,18 @@ def queue():
         flash("Content not yet indexed. Try searching for this content by non-shortened URL.", "warning")
         return redirect(url_for("index"))
 
+@app.route("/downloads/", methods=["GET"])
+def downloads():
+    to_delete = [x.decode('utf-8') for x in db.lrange("delete_queue", 0, -1)]
+    dls = []
+    for dl in get_fs_downloads():
+        if dl["title"] in to_delete:
+            dl["delete_queue"] = True
+        if "description" in dl:
+            dl["description"] = dl["description"][:100] + "..." if len(dl["description"]) > 100 else dl["description"]
+
+        dls.append(dl)
+    return render_template("downloads.html", downloads=dls, page="downloads")
 
 @app.route("/manifest.json", methods=["GET"])
 def manifest():

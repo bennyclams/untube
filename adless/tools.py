@@ -2,13 +2,16 @@ from datetime import datetime
 from clilib.util.logging import Logging
 from adless.plex import media_exists
 from urllib.parse import parse_qs, urlparse
-from pytube import YouTube, Playlist
+# from pytube import YouTube, Playlist
 # from pytube.exceptions import AgeRestrictedError, VideoUnavailable
 import pytube.exceptions as exceptions
 from pathlib import Path
 from hashlib import sha1
+import threading
 import requests
+import base64
 import ffmpeg
+import yt_dlp
 import redis
 import json
 import re
@@ -16,6 +19,83 @@ import os
 
 
 db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+video_dir = Path(os.getenv("VIDEO_DIR", "/tmp/untube"))
+format_filter = os.getenv("FORMAT_FILTER", None)
+if format_filter is not None:
+    format_filter = format_filter.split(",")
+else:
+    format_filter = ["mp4", "webm", "ogg"]
+resolution_filter = os.getenv("RESOLUTION_FILTER", None)
+if resolution_filter is not None:
+    resolution_filter = resolution_filter.split(",")
+    resolution_filter = [int(resolution) for resolution in resolution_filter]
+else:
+    resolution_filter = [2160, 1920, 1440, 1080, 720, 480, 360, 240, 144]
+
+def escape_ansi(line):
+    ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
+    return ansi_escape.sub('', line).strip()
+
+def get_progress(video_name):
+    """
+    Get the progress of a download.
+    """
+    video_path = Path(video_dir).joinpath(video_name)
+    audio_progress_path = video_path.joinpath(f"audio_progress.json")
+    video_progress_path = video_path.joinpath(f"video_progress.json")
+    processing = video_path.joinpath(".processing")
+    processing_done = video_path.joinpath(".processing_done")
+    processing_error = video_path.joinpath(".processing_error")
+    if not audio_progress_path.exists():
+        audio_progress = {"status": "not_started"}
+    else:
+        with open(audio_progress_path, "r") as f:
+            audio_progress = json.loads(f.read())
+    if not video_progress_path.exists():
+        video_progress = {"status": "not_started"}
+    else:
+        with open(video_progress_path, "r") as f:
+            video_progress = json.loads(f.read())
+    processing_status = "not_started"
+    if processing.exists():
+        processing_status = "processing"
+    elif processing_done.exists():
+        processing_status = "done"
+    elif processing_error.exists():
+        processing_status = "error"
+    if audio_progress["status"] == "not_started" and video_progress["status"] == "not_started":
+        return None
+    return {
+        "audio": audio_progress,
+        "video": video_progress,
+        "processing": processing_status,
+    }
+
+def ydl_progress(d):
+    if d['status'] == 'downloading':
+        progress = {
+            "status": "downloading",
+            "part": d["filename"].split(".")[-1],
+            "downloaded_bytes": d["downloaded_bytes"],
+            "total_bytes": d["total_bytes"] if "total_bytes" in d else None,
+            "pct": escape_ansi(d["_percent_str"]) if "_percent_str" in d else None,
+        }
+        file_path = Path(d["filename"])
+        progress_path = file_path.parent.joinpath(f"{file_path.suffix[1:]}_progress.json")
+        with open(progress_path, "w") as f:
+            f.write(json.dumps(progress))   
+    elif d['status'] == 'finished':
+        progress = {
+            "status": "finished",
+            "part": d["filename"].split(".")[-1],
+            "downloaded_bytes": d["downloaded_bytes"],
+            "total_bytes": d["total_bytes"] if "total_bytes" in d else None,
+            "pct": escape_ansi(d["_percent_str"]) if "_percent_str" in d else None,
+        }
+        file_path = Path(d["filename"])
+        progress_path = file_path.parent.joinpath(f"{file_path.suffix[1:]}_progress.json")
+        with open(progress_path, "w") as f:
+            f.write(json.dumps(progress))   
 
 def on_progress(stream, chunk, bytes_remaining):
     """
@@ -35,77 +115,222 @@ def on_complete(stream, file_path):
     """
     print(f"Downloaded to {file_path}")
 
+def get_fs_downloads():
+    """
+    Get all currently available downloads from the filesystem.
+    """
+    video_dirs = [d for d in video_dir.iterdir() if d.is_dir()]
+    downloads = []
+    for _video_dir in video_dirs:
+        dbkey_file = _video_dir.joinpath(".key")
+        if dbkey_file.exists():
+            dbkey = dbkey_file.read_text()
+            if db.exists(dbkey):
+                downloads.append(json.loads(db.get(dbkey)))
+                continue
+        encoded_name = base64.b64encode(_video_dir.name.encode()).decode()
+        thumb_url = "/api/v1/thumbnail/%s/" % encoded_name
+        if not _video_dir.joinpath(f"{_video_dir.name}.jpg").exists():
+            thumb_url = "/static/images/thumb_unavailable.png"
+        downloads.append({
+            "_keyname": encoded_name,
+            "id": encoded_name,
+            "title": _video_dir.name,
+            "author": "Unavailable",
+            "length": "Unavailable",
+            "type": "video",
+            "thumbnail": thumb_url,
+        })
+    return downloads
+
 def get_video(video_id: str, destination: str, video_subdir: bool = True, only_audio: bool = False, itag: int = None, filename: str = None):
     """
     download a single video
     """
     destination = Path(destination)
-    video = YouTube(video_id, on_progress_callback=on_progress, on_complete_callback=on_complete)
-    video_name = video.title
+    if not destination.exists():
+        destination.mkdir(parents=True)
+    video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+    video_name = video["title"]
     if filename:
         video_name = filename
     video_name = video_name.replace(",", "").replace("|", "").replace("/", "")
-    logger = Logging(video.video_id).get_logger()
+    logger = Logging(video["id"]).get_logger()
     logger.info(f"Downloading video: {video_name} ...")
-    if only_audio:
-        logger.info("only_audio is set to True, assuming this is music ...")
-        # Assume this is being downloaded as music, and attempt to get track information
-        logger.info("Getting track information ...")
-        metadata = {}
-        if video.description:
-            matches = re.findall(r"([A-Z][a-z]+): (.*)", video.description)
-            for match in matches:
-                key = match[0].lower()
-                if key in metadata:
-                    continue
-                metadata[key] = match[1]
-        metadata["title"] = video_name
-        metadata["artist"] = video.author
-        if "album" not in metadata:
-            metadata["album"] = "Unknown"
-
-    if only_audio:
-        destination = destination.joinpath(metadata["artist"]).joinpath(metadata["album"])
-        if not destination.exists():
-            destination.mkdir(parents=True)
-    else:
+    if not only_audio:
         if video_subdir:
             destination = destination.joinpath(video_name)
         if not destination.exists():
             destination.mkdir(parents=True)
-
-    thumbnail = destination.joinpath(f"{video_name}.jpg")
-    res = requests.get(video.thumbnail_url)
-    with open(thumbnail, "wb") as f:
-        f.write(res.content)
-    if not only_audio:
-        logger.info("Getting video stream ...")
         if itag:
-            logger.info(f"Using itag: {itag} ...")
-            _vs = video.streams.get_by_itag(itag)
+            for stream in video["formats"]:
+                if stream["format_id"] == itag:
+                    video_format = stream
+                    break
         else:
-            logger.info("Using highest resolution stream ...")
-            _vs = video.streams.order_by("resolution").desc().first()
-        file_extension = _vs.mime_type.split("/")[-1]
-        video_filename = f"{video_name}.{file_extension}"
-        _vs.download(output_path=destination, filename=f"{video_name}.tmp")
+            streams = []
+            for stream in video["formats"]:
+                # if "format_note" not in stream:
+                #     print(stream)
+                #     continue
+                # if stream["format_note"] == "tiny":
+                #     continue
+                format_note = "%sp@%s" % (stream["height"], stream["fps"]) if "height" in stream else "audio only"
+                if "height" in stream and stream["height"] is not None:
+                    if stream["ext"] not in format_filter:
+                        continue
+                    if stream["height"] not in resolution_filter:
+                        continue
+                    if any([stream["height"] == s["resolution"] for s in streams]):
+                        continue
+                    streams.append(stream)
+            streams = sorted(streams, key=lambda x: x["resolution"], reverse=True)
+            video_format = video["formats"][0]
+        def get_video():
+            try:
+                yt_dlp.YoutubeDL({
+                    "outtmpl": str(destination.joinpath(f"{video_name}.video")),
+                    # "progress_hooks": [on_progress],
+                    "logger": logger,
+                    "format": video_format["format_id"],
+                    "progress_hooks": [ydl_progress],
+                }).download([video_id])
+            except Exception:
+                logger.exception("Error downloading video")
+                return False
+            return True
+        video_thread = threading.Thread(target=get_video)
+        video_thread.start()
+
+
     logger.info("Getting audio stream ...")
-    video.streams.filter(only_audio=True).order_by("abr").desc().first().download(output_path=destination, filename=f"{video_name}.mp3")
-    video_file = destination.joinpath(f"{video_name}.tmp")
-    audio_file = destination.joinpath(f"{video_name}.mp3")
+    yt_dlp.YoutubeDL({
+        "outtmpl": str(destination.joinpath(f"{video_name}.audio")),
+        # "progress_hooks": [on_progress],
+        "logger": logger,
+        "format": video_format["ext"] ,
+        "progress_hooks": [ydl_progress],
+    }).download([video_id])
+
     if not only_audio:
-        output_file = str(destination.joinpath(video_filename))
+        video_thread.join()
+        
+    logger.info("Getting thumbnail ...")
+    thumbnail_url = video["thumbnail"]
+    thumbnail = requests.get(thumbnail_url)
+    with open(destination.joinpath(f"{video_name}.jpg"), "wb") as f:
+        f.write(thumbnail.content)
+
+    video_file = destination.joinpath(f"{video_name}.video")
+    audio_file = destination.joinpath(f"{video_name}.audio")
+    output_file = destination.joinpath(f"{video_name}.%s" % video_format["ext"])
+
+    if not only_audio:
         logger.info("Merging streams ...")
+        _p = destination.joinpath(".processing")
+        _pd = destination.joinpath(".processing_done")
+        if _pd.exists():
+            _pd.unlink()
+        _p.touch()
         _v = ffmpeg.input(video_file)
         _a = ffmpeg.input(audio_file)
-        ffmpeg.output(_v, _a, output_file, acodec='copy', vcodec='copy').run()
+        if output_file.exists():
+            output_file.unlink()
+        try:
+            ffmpeg.output(_v, _a, str(output_file), acodec='copy', vcodec='copy', strict="-2").run()
+        except Exception as e:
+            logger.exception("Error merging audio and video streams: %s" % e)
+            _p.unlink()
+            destination.joinpath(".processing_error").touch()
+            full_url = f"https://www.youtube.com/watch?v={video['id']}"
+            key_name = f"video:{sha1(full_url.encode('utf-8')).hexdigest()}"
+            if db.exists(key_name):
+                video_info = json.loads(db.get(key_name))
+                video_info["error"] = str(e)
+                db.set(key_name, json.dumps(video_info))
+            db.lpush("errors", key_name)
+            return False
+            
         video_file.unlink()
-    if not only_audio:
         audio_file.unlink()
-    full_url = f"https://www.youtube.com/watch?v={video.video_id}"
+        _p.unlink()
+        _pd.touch()
+
+    full_url = f"https://www.youtube.com/watch?v={video['id']}"
     key_name = f"video:{sha1(full_url.encode('utf-8')).hexdigest()}"
+    key_file = destination.joinpath(f".key")
+    with open(key_file, "w") as f:
+        f.write(key_name)
     db.lpush("downloads", key_name)
-    # video.download(destination=destination, resolution="720p")
+
+
+    # video = YouTube(video_id, on_progress_callback=on_progress, on_complete_callback=on_complete)
+    # video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+    # video_name = video.title
+    # if filename:
+    #     video_name = filename
+    # video_name = video_name.replace(",", "").replace("|", "").replace("/", "")
+    # logger = Logging(video.video_id).get_logger()
+    # logger.info(f"Downloading video: {video_name} ...")
+    # if only_audio:
+    #     logger.info("only_audio is set to True, assuming this is music ...")
+    #     # Assume this is being downloaded as music, and attempt to get track information
+    #     logger.info("Getting track information ...")
+    #     metadata = {}
+    #     if video.description:
+    #         matches = re.findall(r"([A-Z][a-z]+): (.*)", video.description)
+    #         for match in matches:
+    #             key = match[0].lower()
+    #             if key in metadata:
+    #                 continue
+    #             metadata[key] = match[1]
+    #     metadata["title"] = video_name
+    #     metadata["artist"] = video.author
+    #     if "album" not in metadata:
+    #         metadata["album"] = "Unknown"
+
+    # if only_audio:
+    #     destination = destination.joinpath(metadata["artist"]).joinpath(metadata["album"])
+    #     if not destination.exists():
+    #         destination.mkdir(parents=True)
+    # else:
+    #     if video_subdir:
+    #         destination = destination.joinpath(video_name)
+    #     if not destination.exists():
+    #         destination.mkdir(parents=True)
+
+    # thumbnail = destination.joinpath(f"{video_name}.jpg")
+    # res = requests.get(video.thumbnail_url)
+    # with open(thumbnail, "wb") as f:
+    #     f.write(res.content)
+    # if not only_audio:
+    #     logger.info("Getting video stream ...")
+    #     if itag:
+    #         logger.info(f"Using itag: {itag} ...")
+    #         _vs = video.streams.get_by_itag(itag)
+    #     else:
+    #         logger.info("Using highest resolution stream ...")
+    #         _vs = video.streams.order_by("resolution").desc().first()
+    #     file_extension = _vs.mime_type.split("/")[-1]
+    #     video_filename = f"{video_name}.{file_extension}"
+    #     _vs.download(output_path=destination, filename=f"{video_name}.tmp")
+    # logger.info("Getting audio stream ...")
+    # video.streams.filter(only_audio=True).order_by("abr").desc().first().download(output_path=destination, filename=f"{video_name}.mp3")
+    # video_file = destination.joinpath(f"{video_name}.tmp")
+    # audio_file = destination.joinpath(f"{video_name}.mp3")
+    # if not only_audio:
+    #     output_file = str(destination.joinpath(video_filename))
+    #     logger.info("Merging streams ...")
+    #     _v = ffmpeg.input(video_file)
+    #     _a = ffmpeg.input(audio_file)
+    #     ffmpeg.output(_v, _a, output_file, acodec='copy', vcodec='copy').run()
+    #     video_file.unlink()
+    # if not only_audio:
+    #     audio_file.unlink()
+    # full_url = f"https://www.youtube.com/watch?v={video.video_id}"
+    # key_name = f"video:{sha1(full_url.encode('utf-8')).hexdigest()}"
+    # db.lpush("downloads", key_name)
+    # # video.download(destination=destination, resolution="720p")
 
 def get_playlist_videos(playlist_id: str, destination: str, only_audio: bool = False):
     """
@@ -174,7 +399,31 @@ def get_video_info(video_id: str):
             return info
     try:
         # print("Getting video info (%s) ..." % video_id)
-        video = YouTube(video_id)
+        # video = YouTube(video_id)
+        video = yt_dlp.YoutubeDL({"quiet": True}).extract_info(video_id, download=False)
+        streams = []
+        for stream in video["formats"]:
+            # if "format_note" not in stream:
+            #     print(stream)
+            #     continue
+            # if stream["format_note"] == "tiny":
+            #     continue
+            format_note = "%sp@%s" % (stream["height"], stream["fps"]) if "height" in stream else "audio only"
+            if "height" in stream and stream["height"] is not None:
+                if stream["ext"] not in format_filter:
+                    continue
+                if stream["height"] not in resolution_filter:
+                    continue
+                if any([stream["height"] == s["resolution"] for s in streams]):
+                    continue
+                streams.append({
+                    "itag": stream["format_id"],
+                    "mime_type": stream["ext"],
+                    "resolution": stream["height"],
+                    "fps": stream["fps"] if "fps" in stream else None,
+                    "url": stream["url"]
+                })
+        streams = sorted(streams, key=lambda x: x["resolution"], reverse=True)
         # print("Got video info (%s) ..." % video_id)
     except exceptions.AgeRestrictedError:
         return {
@@ -194,68 +443,50 @@ def get_video_info(video_id: str):
             "_downloaded": False,
             "_unavailable": True
         }
-    except Exception as e:
-        # print("Unable to get video info (%s): %s" % (video_id, e))
-        return {
-            "id": real_id,
-            "title": "Video Unavailable (%s)" % e,
-            "description": "Unable to download video at this time ...",
-            "thumbnail": None,
-            "author": "Unknown",
-            "length": 0,
-            "views": 0,
-            "rating": None,
-            "publish_date": 0,
-            "streams": [],
-            "_type": "video",
-            "_pull_time": int(datetime.now().timestamp()),
-            "_keyname": key_name,
-            "_downloaded": False,
-            "_unavailable": True
-        }
-    streams = []
-    try:
-        for stream in video.streams.filter(adaptive=True, mime_type="video/webm", only_video=True):
-            streams.append({
-                "itag": stream.itag,
-                "mime_type": stream.mime_type,
-                "resolution": stream.resolution,
-                "fps": stream.fps,
-                "bitrate": stream.bitrate,
-                "type": "video"
-            })
-    except exceptions.AgeRestrictedError:
-        return {
-            "id": real_id,
-            "title": "Age Restricted Video",
-            "description": "Unable to download age-restricted videos at this time ...",
-            "thumbnail": None,
-            "author": "Unknown",
-            "length": 0,
-            "views": 0,
-            "rating": None,
-            "publish_date": 0,
-            "streams": [],
-            "_type": "video",
-            "_pull_time": int(datetime.now().timestamp()),
-            "_keyname": key_name,
-            "_downloaded": False,
-            "_unavailable": True
-        }
+    # except Exception as e:
+    #     # print("Unable to get video info (%s): %s" % (video_id, e))
+    #     return {
+    #         "id": real_id,
+    #         "title": "Video Unavailable (%s)" % e,
+    #         "description": "Unable to download video at this time ...",
+    #         "thumbnail": None,
+    #         "author": "Unknown",
+    #         "length": 0,
+    #         "views": 0,
+    #         "rating": None,
+    #         "publish_date": 0,
+    #         "streams": [],
+    #         "_type": "video",
+    #         "_pull_time": int(datetime.now().timestamp()),
+    #         "_keyname": key_name,
+    #         "_downloaded": False,
+    #         "_unavailable": True
+    #     }
+    # streams = []
+    # try:
+    #     for stream in video.streams.filter(adaptive=True, mime_type="video/webm", only_video=True):
+    #         streams.append({
+    #             "itag": stream.itag,
+    #             "mime_type": stream.mime_type,
+    #             "resolution": stream.resolution,
+    #             "fps": stream.fps,
+    #             "bitrate": stream.bitrate,
+    #             "type": "video"
+    #         })
     info = {
-        "id": video.video_id,
+        "id": video["id"],
         # Remove commas due to plex bug which causes incorrect 
         # media to be returned when title contains comma.
         "_keyname": key_name,
-        "title": video.title.replace(",", "").replace("|", "").replace("/", ""),
-        "description": video.description,
-        "thumbnail": video.thumbnail_url,
-        "author": video.author,
-        "length": video.length,
-        "views": video.views,
-        "rating": video.rating,
-        "publish_date": int(video.publish_date.timestamp()),
-        "keywords": video.keywords,
+        "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
+        "description": video["description"],
+        "thumbnail": video["thumbnail"],
+        "author": video["uploader"],
+        "length": video["duration"],
+        "views": video["view_count"],
+        "rating": video["average_rating"],
+        "publish_date": datetime.strptime(video["upload_date"], "%Y%m%d").timestamp(),
+        "keywords": video["tags"],
         "streams": streams
     }
     info["_type"] = "video"

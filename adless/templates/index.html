@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-6 col-sm-12">
+<div class="row" data-masonry='{"itemSelector": ".col-md-3"}'>
+    <div class="col-md-3 offset-md-3 col-sm-12">
         <h3>Recent Downloads</h3>
         {% if recent_downloads %}
         {% for download in recent_downloads %}
         <div class="card mb-3">
             <div class="row g-0">
-                <div class="col-md-5">
+                <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
                     <img src="{{ download.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
                 </div>
                 <div class="col-md-7">
@@ -48,13 +48,13 @@
         </div>
         {% endif %}
     </div>
-    <div class="col-md-6 col-sm-12">
+    <div class="col-md-3 col-sm-12">
         <h3>Recent Searches</h3>
         {% if recent_searches %}
         {% for search in recent_searches %}
         <div class="card mb-3">
             <div class="row g-0">
-                <div class="col-md-5">
+                <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
                     <img src="{{ search.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
                 </div>
                 <div class="col-md-7">
@@ -92,13 +92,13 @@
         </div>
         {% endif %}
     </div>
-    <div class="col-md-6 col-sm-12">
+    <div class="col-md-3 col-sm-12">
         <h3>Queued Downloads</h3>
         {% if download_queue %}
         {% for download in download_queue %}
         <div class="card mb-3">
             <div class="row g-0">
-                <div class="col-md-5">
+                <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
                     <img src="{{ download.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
                 </div>
                 <div class="col-md-7">
