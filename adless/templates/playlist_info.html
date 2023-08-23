@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-12 mt-3">
+    <div class="col-md-6 col-sm-12 offset-md-3 mt-3">
         <a href="https://www.youtube.com/playlist?list={{ id }}" class="btn btn-outline-danger mr-1" target="_blank"
             rel="noopener noreferrer">Watch on Youtube</a>
         <!-- <a type="button" class="float-end btn btn-success" href="{{ url_for('queue', id=_keyname) }}">Download This Playlist</a> -->
@@ -84,7 +84,7 @@
             </ul>
         </div> -->
     </div>
-    <div class="col-12 mt-3">
+    <div class="col-md-6 col-sm-12 offset-md-3 mt-3">
         <div class="card">
             <img src="{{ thumbnail }}" class="card-img-top" alt="Video Thumbnail Unavailable">
             <div class="card-body">
@@ -102,10 +102,10 @@
             </div>
         </div>
     </div>
-    <div class="col-12">
+    <div class="col-md-6 col-sm-12 offset-md-3">
         <h3 class="mt-3">Videos in this Playlist</h3>
     </div>
-    <div class="col-12">
+    <div class="col-md-6 col-sm-12 offset-md-3">
         <div class="row" data-masonry='{"percentPosition": true }'>
             {% for video in videos %}
             <div class="col-4 mb-2">

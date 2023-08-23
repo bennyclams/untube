@@ -2,9 +2,6 @@ from datetime import datetime
 from clilib.util.logging import Logging
 from adless.plex import media_exists
 from urllib.parse import parse_qs, urlparse
-# from pytube import YouTube, Playlist
-# from pytube.exceptions import AgeRestrictedError, VideoUnavailable
-import pytube.exceptions as exceptions
 from pathlib import Path
 from hashlib import sha1
 import threading
@@ -263,75 +260,6 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
         f.write(key_name)
     db.lpush("downloads", key_name)
 
-
-    # video = YouTube(video_id, on_progress_callback=on_progress, on_complete_callback=on_complete)
-    # video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
-    # video_name = video.title
-    # if filename:
-    #     video_name = filename
-    # video_name = video_name.replace(",", "").replace("|", "").replace("/", "")
-    # logger = Logging(video.video_id).get_logger()
-    # logger.info(f"Downloading video: {video_name} ...")
-    # if only_audio:
-    #     logger.info("only_audio is set to True, assuming this is music ...")
-    #     # Assume this is being downloaded as music, and attempt to get track information
-    #     logger.info("Getting track information ...")
-    #     metadata = {}
-    #     if video.description:
-    #         matches = re.findall(r"([A-Z][a-z]+): (.*)", video.description)
-    #         for match in matches:
-    #             key = match[0].lower()
-    #             if key in metadata:
-    #                 continue
-    #             metadata[key] = match[1]
-    #     metadata["title"] = video_name
-    #     metadata["artist"] = video.author
-    #     if "album" not in metadata:
-    #         metadata["album"] = "Unknown"
-
-    # if only_audio:
-    #     destination = destination.joinpath(metadata["artist"]).joinpath(metadata["album"])
-    #     if not destination.exists():
-    #         destination.mkdir(parents=True)
-    # else:
-    #     if video_subdir:
-    #         destination = destination.joinpath(video_name)
-    #     if not destination.exists():
-    #         destination.mkdir(parents=True)
-
-    # thumbnail = destination.joinpath(f"{video_name}.jpg")
-    # res = requests.get(video.thumbnail_url)
-    # with open(thumbnail, "wb") as f:
-    #     f.write(res.content)
-    # if not only_audio:
-    #     logger.info("Getting video stream ...")
-    #     if itag:
-    #         logger.info(f"Using itag: {itag} ...")
-    #         _vs = video.streams.get_by_itag(itag)
-    #     else:
-    #         logger.info("Using highest resolution stream ...")
-    #         _vs = video.streams.order_by("resolution").desc().first()
-    #     file_extension = _vs.mime_type.split("/")[-1]
-    #     video_filename = f"{video_name}.{file_extension}"
-    #     _vs.download(output_path=destination, filename=f"{video_name}.tmp")
-    # logger.info("Getting audio stream ...")
-    # video.streams.filter(only_audio=True).order_by("abr").desc().first().download(output_path=destination, filename=f"{video_name}.mp3")
-    # video_file = destination.joinpath(f"{video_name}.tmp")
-    # audio_file = destination.joinpath(f"{video_name}.mp3")
-    # if not only_audio:
-    #     output_file = str(destination.joinpath(video_filename))
-    #     logger.info("Merging streams ...")
-    #     _v = ffmpeg.input(video_file)
-    #     _a = ffmpeg.input(audio_file)
-    #     ffmpeg.output(_v, _a, output_file, acodec='copy', vcodec='copy').run()
-    #     video_file.unlink()
-    # if not only_audio:
-    #     audio_file.unlink()
-    # full_url = f"https://www.youtube.com/watch?v={video.video_id}"
-    # key_name = f"video:{sha1(full_url.encode('utf-8')).hexdigest()}"
-    # db.lpush("downloads", key_name)
-    # # video.download(destination=destination, resolution="720p")
-
 def get_playlist_videos(playlist_id: str, destination: str, only_audio: bool = False):
     """
     download all videos in a playlist
@@ -361,18 +289,19 @@ def get_playlist_info(playlist_id: str):
         if info["_pull_time"] + 86400 > int(datetime.now().timestamp()):
             info["_keyname"] = key_name
             return info
-    playlist = Playlist(playlist_id)
+    # playlist = Playlist(playlist_id)
+    playlist = yt_dlp.YoutubeDL({"quiet": True}).extract_info(playlist_id, download=False)
     # return playlist
     info = {
-        "id": playlist.playlist_id,
-        "title": playlist.title,
+        "id": playlist['id'],
+        "title": playlist['title'],
         # "description": playlist.description,
-        "description": None,
+        "description": playlist['description'] if 'description' in playlist else None,
         # "thumbnail": playlist.thumbnail_url,
-        "author": playlist.owner,
-        "length": len(playlist.video_urls),
+        "author": playlist['uploader'],
+        "length": len(playlist['entries']),
         # "views": playlist.views,
-        "videos": [get_video_info(video_id) for video_id in playlist.video_urls]
+        "videos": [get_video_info(video['original_url'], video) for video in playlist['entries']]
     }
     info["thumbnail"] = info["videos"][0]["thumbnail"]
     info["_type"] = "playlist"
@@ -382,7 +311,7 @@ def get_playlist_info(playlist_id: str):
     info["_keyname"] = key_name
     return info
 
-def get_video_info(video_id: str):
+def get_video_info(video_id: str, entry: dict = None):
     """
     Get video info from YouTube and cache it in Redis for 24 hours.
     """
@@ -400,7 +329,10 @@ def get_video_info(video_id: str):
     try:
         # print("Getting video info (%s) ..." % video_id)
         # video = YouTube(video_id)
-        video = yt_dlp.YoutubeDL({"quiet": True}).extract_info(video_id, download=False)
+        if entry:
+            video = entry
+        else:
+            video = yt_dlp.YoutubeDL({"quiet": True}).extract_info(video_id, download=False)
         streams = []
         for stream in video["formats"]:
             # if "format_note" not in stream:
@@ -425,7 +357,7 @@ def get_video_info(video_id: str):
                 })
         streams = sorted(streams, key=lambda x: x["resolution"], reverse=True)
         # print("Got video info (%s) ..." % video_id)
-    except exceptions.AgeRestrictedError:
+    except Exception as e:
         return {
             "id": real_id,
             "title": "Age Restricted Video",
@@ -443,36 +375,7 @@ def get_video_info(video_id: str):
             "_downloaded": False,
             "_unavailable": True
         }
-    # except Exception as e:
-    #     # print("Unable to get video info (%s): %s" % (video_id, e))
-    #     return {
-    #         "id": real_id,
-    #         "title": "Video Unavailable (%s)" % e,
-    #         "description": "Unable to download video at this time ...",
-    #         "thumbnail": None,
-    #         "author": "Unknown",
-    #         "length": 0,
-    #         "views": 0,
-    #         "rating": None,
-    #         "publish_date": 0,
-    #         "streams": [],
-    #         "_type": "video",
-    #         "_pull_time": int(datetime.now().timestamp()),
-    #         "_keyname": key_name,
-    #         "_downloaded": False,
-    #         "_unavailable": True
-    #     }
-    # streams = []
-    # try:
-    #     for stream in video.streams.filter(adaptive=True, mime_type="video/webm", only_video=True):
-    #         streams.append({
-    #             "itag": stream.itag,
-    #             "mime_type": stream.mime_type,
-    #             "resolution": stream.resolution,
-    #             "fps": stream.fps,
-    #             "bitrate": stream.bitrate,
-    #             "type": "video"
-    #         })
+
     info = {
         "id": video["id"],
         # Remove commas due to plex bug which causes incorrect 

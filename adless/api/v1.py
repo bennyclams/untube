@@ -16,8 +16,8 @@ def queue():
     videos = request.json.get("videos", [])
     for video in videos:
         vid = video.get("id", None)
-        itag = video.get("itag", None)
-        only_audio = video.get("only_audio", False)
+        itag = video.get("quality", None)
+        only_audio = video.get("audioOnly", False)
         if not vid:
             continue
         _q = {
