@@ -1,4 +1,3 @@
-pytube
 clilib
 requests
 flask

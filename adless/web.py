@@ -118,6 +118,13 @@ def content_info():
         db.lpush("recent_searches", key_name)
         db.ltrim("recent_searches", 0, 10)
         return redirect(url_for("playlist_info", **url_args))
+    elif parsed_url.path.startswith("/live"):
+        video_id = parsed_url.path.split("/")[-1]
+        real_url = f"https://www.youtube.com/watch?v={video_id}"
+        key_name = f"video:{sha1(real_url.encode('utf-8')).hexdigest()}"
+        db.lpush("recent_searches", key_name)
+        db.ltrim("recent_searches", 0, 10)
+        return redirect(url_for("video_info", v=video_id))
     else:
         flash("Invalid URL", "warning")
         return redirect(url_for("index"))
