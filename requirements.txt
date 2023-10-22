@@ -5,5 +5,4 @@ flask-session
 gunicorn
 ffmpeg-python
 redis
-plexapi
 yt-dlp

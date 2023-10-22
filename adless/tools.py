@@ -1,6 +1,5 @@
 from datetime import datetime
 from clilib.util.logging import Logging
-from adless.plex import media_exists
 from urllib.parse import parse_qs, urlparse
 from pathlib import Path
 from hashlib import sha1
@@ -29,6 +28,16 @@ if resolution_filter is not None:
     resolution_filter = [int(resolution) for resolution in resolution_filter]
 else:
     resolution_filter = [2160, 1920, 1440, 1280, 1080, 960, 720, 480]
+
+def media_exists(title: str):
+    """
+    Check if a given media exists in the Plex library.
+    """
+    downloads = get_fs_downloads()
+    for download in downloads:
+        if download["title"] == title:
+            return True
+    return False
 
 def escape_ansi(line):
     ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
