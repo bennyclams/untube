@@ -11,6 +11,7 @@ import ffmpeg
 import yt_dlp
 import redis
 import json
+import sys
 import re
 import os
 
@@ -21,13 +22,13 @@ format_filter = os.getenv("FORMAT_FILTER", None)
 if format_filter is not None:
     format_filter = format_filter.split(",")
 else:
-    format_filter = ["mp4", "webm", "ogg"]
+    format_filter = ["mp4", "webm", "ogg", "flv", "3gp", "mkv", "m4a"]
 resolution_filter = os.getenv("RESOLUTION_FILTER", None)
 if resolution_filter is not None:
     resolution_filter = resolution_filter.split(",")
     resolution_filter = [int(resolution) for resolution in resolution_filter]
 else:
-    resolution_filter = [2160, 1920, 1440, 1080, 720, 480, 360, 240, 144]
+    resolution_filter = [2160, 1920, 1440, 1280, 1080, 960, 720, 480]
 
 def escape_ansi(line):
     ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
@@ -69,6 +70,12 @@ def get_progress(video_name):
     }
 
 def ydl_progress(d):
+    if "downloaded_bytes" not in d:
+        d["downloaded_bytes"] = 0
+        if "filename" in d:
+            file_path = Path(d["filename"])
+            file_size = file_path.stat().st_size
+            d["downloaded_bytes"] = file_size
     if d['status'] == 'downloading':
         progress = {
             "status": "downloading",
@@ -165,6 +172,7 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
                     video_format = stream
                     break
         else:
+            format_pairs = []
             streams = []
             for stream in video["formats"]:
                 # if "format_note" not in stream:
@@ -174,17 +182,20 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
                 #     continue
                 format_note = "%sp@%s" % (stream["height"], stream["fps"]) if "height" in stream else "audio only"
                 if "height" in stream and stream["height"] is not None:
-                    if stream["ext"] not in format_filter:
+                    if stream["video_ext"] not in format_filter:
                         continue
                     if stream["height"] not in resolution_filter:
                         continue
-                    if any([stream["height"] == s["resolution"] for s in streams]):
+                    format_pair = "%s/%s" % (stream["resolution"], stream["video_ext"])
+                    if format_pair in format_pairs:
                         continue
+                    format_pairs.append(format_pair)
                     streams.append(stream)
             streams = sorted(streams, key=lambda x: x["resolution"], reverse=True)
-            video_format = video["formats"][0]
+            video_format = streams[0]
         def get_video():
             try:
+                logger.info(f"Getting video stream ...")
                 yt_dlp.YoutubeDL({
                     "outtmpl": str(destination.joinpath(f"{video_name}.video")),
                     # "progress_hooks": [on_progress],
@@ -201,11 +212,17 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
 
 
     logger.info("Getting audio stream ...")
+    audio_streams = []
+    for stream in video["formats"]:
+        if stream["audio_ext"] is not None and stream["audio_ext"] != "none" and stream["abr"] is not None:
+            audio_streams.append(stream)
+    audio_streams = sorted(audio_streams, key=lambda x: x["abr"], reverse=True)
+    audio_format = audio_streams[0]
     yt_dlp.YoutubeDL({
         "outtmpl": str(destination.joinpath(f"{video_name}.audio")),
         # "progress_hooks": [on_progress],
         "logger": logger,
-        "format": video_format["ext"] ,
+        "format": audio_format["format_id"],
         "progress_hooks": [ydl_progress],
     }).download([video_id])
 
@@ -311,7 +328,7 @@ def get_playlist_info(playlist_id: str):
     info["_keyname"] = key_name
     return info
 
-def get_video_info(video_id: str, entry: dict = None):
+def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
     """
     Get video info from YouTube and cache it in Redis for 24 hours.
     """
@@ -325,14 +342,18 @@ def get_video_info(video_id: str, entry: dict = None):
         if info["_pull_time"] + 86400 > int(datetime.now().timestamp()):
             info["_keyname"] = key_name
             info["_downloaded"] = media_exists(info["title"])
-            return info
+            if not bust_cache:
+                return info
+            else:
+                db.delete(key_name)
     try:
         # print("Getting video info (%s) ..." % video_id)
         # video = YouTube(video_id)
         if entry:
             video = entry
         else:
-            video = yt_dlp.YoutubeDL({"quiet": True}).extract_info(video_id, download=False)
+            video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+        format_pairs = []
         streams = []
         for stream in video["formats"]:
             # if "format_note" not in stream:
@@ -340,24 +361,30 @@ def get_video_info(video_id: str, entry: dict = None):
             #     continue
             # if stream["format_note"] == "tiny":
             #     continue
-            format_note = "%sp@%s" % (stream["height"], stream["fps"]) if "height" in stream else "audio only"
-            if "height" in stream and stream["height"] is not None:
-                if stream["ext"] not in format_filter:
+            format_note = "%sp@%s (%s)" % (stream["height"], stream["fps"], stream["video_ext"]) if "height" in stream else "audio only"
+            if "resolution" in stream and stream["resolution"] is not None:
+                if stream["video_ext"] not in format_filter:
                     continue
                 if stream["height"] not in resolution_filter:
                     continue
-                if any([stream["height"] == s["resolution"] for s in streams]):
+                format_pair = "%s/%s" % (stream["resolution"], stream["video_ext"])
+                if format_pair in format_pairs:
                     continue
+                format_pairs.append(format_pair)
+
                 streams.append({
                     "itag": stream["format_id"],
-                    "mime_type": stream["ext"],
-                    "resolution": stream["height"],
+                    "mime_type": stream["video_ext"],
+                    "height": stream["height"],
+                    "resolution": stream["resolution"],
                     "fps": stream["fps"] if "fps" in stream else None,
                     "url": stream["url"]
                 })
+
         streams = sorted(streams, key=lambda x: x["resolution"], reverse=True)
         # print("Got video info (%s) ..." % video_id)
     except Exception as e:
+        print(e)
         return {
             "id": real_id,
             "title": "Age Restricted Video",
@@ -373,7 +400,8 @@ def get_video_info(video_id: str, entry: dict = None):
             "_pull_time": int(datetime.now().timestamp()),
             "_keyname": key_name,
             "_downloaded": False,
-            "_unavailable": True
+            "_unavailable": True,
+            "_error": str(e)
         }
 
     info = {

@@ -18,6 +18,7 @@ app.config["DEBUG"] = (os.getenv("DEBUG", "false").lower() == "true")
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = db
 app.config["ADMIN_PASSWORD"] = os.getenv("ADMIN_PASSWORD", "password")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24))
 
 Session(app)
 
@@ -133,8 +134,9 @@ def content_info():
 @app.route("/info/video/", methods=["GET"])
 def video_info():
     video_id = request.args.get("v")
+    bust_cache = request.args.get("bust_cache", "no") == "yes"
     full_url = f"https://www.youtube.com/watch?v={video_id}"
-    info = get_video_info(full_url)
+    info = get_video_info(full_url, bust_cache=bust_cache)
     info["length"] = str(timedelta(seconds=info["length"]))
     info["progress"] = get_progress(info["title"])
     return render_template("video_info.html", **info)

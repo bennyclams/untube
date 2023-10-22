@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if _error %}
+<div class="alert alert-danger" role="alert">
+    {{ _error }}
+</div>
+{% endif %}
 <div class="row">
     <div class="col-md-6 offset-md-3 mt-3">
         <a href="https://www.youtube.com/watch?v={{ id }}" class="btn btn-outline-danger mr-1" target="_blank" rel="noopener noreferrer">Watch on Youtube</a>
@@ -17,7 +22,7 @@
                 <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname) }}">Best Quality</a></li>
                 <li><hr class="dropdown-divider"></li>
                 {% for stream in streams %}
-                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname, itag=stream['itag']) }}">{{ stream['resolution'] }}@{{ stream['fps'] }}fps</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname, itag=stream['itag']) }}">{{ stream['resolution'] }}@{{ stream['fps'] }}fps ({{ stream['mime_type'] }})</a></li>
                 {% endfor %}
             </ul>
         </div>
