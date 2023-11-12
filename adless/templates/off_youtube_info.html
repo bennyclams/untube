@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if _error %}
+<div class="alert alert-danger" role="alert">
+    {{ _error }}
+</div>
+{% endif %}
+<div class="modal fade" id="downloadModel" tabindex="-1" aria-labelledby="downloadModelLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="downloadModelLabel">Download Stream</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <form action="{{ url_for('queue') }}" method="GET">
+                <input type="hidden" name="yt" value="no">
+                <input type="hidden" name="id" value="{{ _keyname }}">
+                <div class="mb-3">
+                    <label for="itag" class="form-label">Stream</label>
+                    <select class="form-select" id="itag" name="itag">
+                        {% for stream in streams %}
+                        <option value="{{ stream['itag'] }}">{{ stream['resolution'] }} {% if stream['fps'] %}@{{ stream['fps'] }}fps{% endif %} ({{ stream['mime_type'] }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="title" class="form-label">Title</label>
+                    <input type="text" class="form-control" id="title" name="title" value="{{ title }}">
+                </div>
+                <button type="submit" class="btn btn-primary float-end">Download</button>
+            </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+<div class="row">
+    <div class="col-md-6 offset-md-3 mt-3">
+        {% if _downloaded %}
+        <button type="button" class="btn btn-outline-success" disabled>Downloaded</button>
+        {% endif %}
+        <button class="btn btn-outline-success float-end" {% if _unavailable %}disabled{% endif %} data-bs-toggle="modal" data-bs-target="#downloadModel" type="button">Download...</button>
+        <!-- <div class="dropdown float-end">
+            <button class="btn btn-outline-success dropdown-toggle" {% if _unavailable %}disabled{% endif %} type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Download This Video
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname, only_audio='yes') }}">Download as MP3</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname) }}">Best Quality</a></li>
+                <li><hr class="dropdown-divider"></li>
+                {% for stream in streams %}
+                <li><a class="dropdown-item" href="{{ url_for('queue', id=_keyname, itag=stream['itag']) }}">{{ stream['resolution'] }}@{{ stream['fps'] }}fps ({{ stream['mime_type'] }})</a></li>
+                {% endfor %}
+            </ul>
+        </div> -->
+    </div>
+    <div class="col-md-6 offset-md-3 mt-3">
+        <div class="card">
+            <div class="card-header">
+                Off-YouTube video
+            </div>
+            {% if not _unavailable and thumbnail %}
+            <img src="{{ thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+            {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">{{ title }}</h5>
+                <h6 class="card-subtitle mb-2 text-body-secondary">Host: {{ host }}</h6>
+                <p class="card-text">
+                    {% if description %}
+                    <div style="white-space: pre-wrap;">{{ description }}</div>
+                    {% else %}
+                    <i>No description available.</i>
+                    {% endif %}
+                    <hr>
+                    <span class="text-small">Length: {{ length }}</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    {% if progress %}
+    <div class="col-md-3 col-sm-12 order-first order-md-last mt-3" id="dlCol">
+        <div class="card">
+            <div class="card-header">
+                Download Progress
+            </div>
+            <div class="card-body" id="dlBody">
+                <h6 class="card-subtitle mb-2 text-muted">Video Stream</h6>
+                {% if progress['video']['status'] == 'downloading' %}
+                    {% if progress['video']['pct'] %}
+                    <div class="progress mb-3">
+                        <div id="videoProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: {{ progress['video']['pct'] }};" aria-valuenow="{{ progress['video']['pct'][:-1] }}" aria-valuemin="0" aria-valuemax="100">{{ progress['video']['downloaded_bytes']|filesizeformat }} ({{ progress['video']['pct'] }})</div>
+                    </div>
+                    {% else %}
+                    <div class="progress mb-3">
+                        <div id="videoProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">Downloading... ({{ progress['video']['downloaded_bytes']|filesizeformat }})</div>
+                    </div>
+                    {% endif %}
+                {% elif progress['video']['status'] == 'not_started' %}
+                <div class="progress mb-3">
+                    <div id="videoProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">Waiting...</div>
+                </div>
+                {% elif progress['video']['status'] == 'finished' %}
+                <div class="progress mb-3">
+                    <div id="videoProgress" class="progress-bar progress-bar-striped overflow-visible" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">Finished</div>
+                </div>
+                {% endif %}
+                <!-- <h6 class="card-subtitle mb-2 text-muted">Audio Stream</h6>
+                {% if progress['audio']['status'] == 'downloading' %}
+                    {% if progress['audio']['pct'] %}
+                    <div class="progress">
+                        <div id="audioProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: {{ progress['audio']['pct'] }};" aria-valuenow="{{ progress['audio']['pct'][:-1] }}" aria-valuemin="0" aria-valuemax="100">{{ progress['audio']['downloaded_bytes']|filesizeformat }} ({{ progress['audio']['pct'] }})</div>
+                    </div>
+                    {% else %}
+                    <div class="progress">
+                        <div id="audioProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">Downloading... ({{ progress['audio']['downloaded_bytes']|filesizeformat }})</div>
+                    </div>
+                    {% endif %}
+                {% elif progress['audio']['status'] == 'not_started' %}
+                <div class="progress">
+                    <div id="audioProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">Not Started</div>
+                </div>
+                {% elif progress['audio']['status'] == 'finished' %}
+                <div class="progress">
+                    <div id="audioProgress" class="progress-bar progress-bar-striped overflow-visible" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">Finished</div>
+                </div>
+                {% endif %}
+                {% if progress['processing'] == 'processing' %}
+                <h6 class="card-subtitle mb-2 text-muted mt-3" id="dlProcessing">Processing <div class="spinner-border spinner-border-sm" role="status"></div></h6>
+                {% elif progress['processing'] == 'done' %}
+                <h6 class="card-subtitle mb-2 text-muted mt-3" id="dlProcessing">Processing finished.</h6>
+                {% else %}
+                <h6 class="card-subtitle mb-2 text-muted mt-3 d-none" id="dlProcessing"></h6>
+                {% endif %} -->
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-md-3 col-sm-12 order-first order-md-last mt-3 d-none" id="dlCol">
+        <div class="card">
+            <div class="card-header">
+                Download Progress
+            </div>
+            <div class="card-body" id="dlBody">
+                <h6 class="card-subtitle mb-2 text-muted">Video Stream</h6>
+                <div class="progress mb-3">
+                    <div id="videoProgress" class="progress-bar progress-bar-striped progress-bar-animated overflow-visible" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">Not Started</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block custom_scripts %}
+<script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+<script>
+    function formatBytes(bytes, decimals = 2) {
+        if (!+bytes) return '0 Bytes'
+
+        const k = 1024
+        const dm = decimals < 0 ? 0 : decimals
+        const sizes = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+
+        const i = Math.floor(Math.log(bytes) / Math.log(k))
+
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
+    }
+    $(document).ready(function () {
+        const vidIntId = setInterval(function () {
+            $.ajax({
+                url: "{{ url_for('api.v1.progress', id=_keyname) }}",
+                type: "GET",
+                success: function (data) {
+                    if (data['status'] == 'not_started') {
+                        return
+                    } else {
+                        $('#dlCol').removeClass('d-none');
+                    }
+                    if (data['video']['status'] == 'downloading') {
+                        if (data['video']['pct']) {
+                            $('#videoProgress').css('width', data['video']['pct']);
+                            $('#videoProgress').attr('aria-valuenow', data['video']['pct']);
+                            $('#videoProgress').html(formatBytes(data['video']['downloaded_bytes']) + ' (' + data['video']['pct'] + ')');
+                        } else {
+                            $('#videoProgress').css('width', '100%');
+                            $('#videoProgress').attr('aria-valuenow', '100');
+                            $('#videoProgress').html('Downloading... (' + formatBytes(data['video']['downloaded_bytes']) + ')');
+                        }
+                    }
+                    // if (data['audio']['status'] == 'downloading') {
+                    //     if (data['audio']['pct']) {
+                    //         $('#audioProgress').css('width', data['audio']['pct']);
+                    //         $('#audioProgress').attr('aria-valuenow', data['audio']['pct']);
+                    //         $('#audioProgress').html(formatBytes(data['audio']['downloaded_bytes']) + ' (' + data['audio']['pct'] + ')');
+                    //     } else {
+                    //         $('#audioProgress').css('width', '100%');
+                    //         $('#audioProgress').attr('aria-valuenow', '100');
+                    //         $('#audioProgress').html('Downloading... (' + formatBytes(data['audio']['downloaded_bytes']) + ')');
+                    //     }
+                    // }
+                    // if (data['processing'] == 'processing') {
+                    //     $('#dlProcessing').removeClass('d-none');
+                    //     $('#dlProcessing').html('Processing <div class="spinner-border spinner-border-sm" role="status"></div>');
+                    // } else if (data['processing'] == 'done') {
+                    //     $('#dlProcessing').removeClass('d-none');
+                    //     $('#dlProcessing').html('Processing finished');
+                    // } else if (data['processing'] == 'error') {
+                    //     $('#dlProcessing').removeClass('d-none');
+                    //     $('#dlProcessing').html('Processing error. Check worker logs.');
+                    // }
+                    if (data['video']['status'] == 'finished') {
+                        $('#videoProgress').css('width', '100%');
+                        $('#videoProgress').attr('aria-valuenow', '100');
+                        $('#videoProgress').html('Finished');
+                        $('#videoProgress').removeClass('progress-bar-animated');
+                    }
+                    // if (data['audio']['status'] == 'finished') {
+                    //     $('#audioProgress').css('width', '100%');
+                    //     $('#audioProgress').attr('aria-valuenow', '100');
+                    //     $('#audioProgress').html('Finished');
+                    //     $('#audioProgress').removeClass('progress-bar-animated');
+                    // }
+                    if (data['video']['status'] == 'finished') {
+                        clearInterval(vidIntId);
+                        // window.location.reload();
+                    }
+                }
+            });
+        }, 4000);
+    })
+</script>
+{% endblock %}

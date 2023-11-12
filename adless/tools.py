@@ -28,7 +28,10 @@ if resolution_filter is not None:
     resolution_filter = [int(resolution) for resolution in resolution_filter]
 else:
     resolution_filter = [2160, 1920, 1440, 1280, 1080, 960, 720, 480]
-
+language_filter = os.getenv("LANGUAGE_FILTER", None)
+if language_filter is not None:
+    language_filter = language_filter.split(",")
+    
 def media_exists(title: str):
     """
     Check if a given media exists in the Plex library.
@@ -79,9 +82,15 @@ def get_progress(video_name):
     }
 
 def ydl_progress(d):
+    file_path = None
+    if "filename" in d:
+        file_path = Path(d["filename"])
+    progress_type = file_path.suffix[1:]
+    if progress_type in ("mp4", "webm", "ogg", "flv", "3gp", "mkv"):
+        progress_type = "video"
     if "downloaded_bytes" not in d:
         d["downloaded_bytes"] = 0
-        if "filename" in d:
+        if file_path:
             file_path = Path(d["filename"])
             file_size = file_path.stat().st_size
             d["downloaded_bytes"] = file_size
@@ -94,7 +103,7 @@ def ydl_progress(d):
             "pct": escape_ansi(d["_percent_str"]) if "_percent_str" in d else None,
         }
         file_path = Path(d["filename"])
-        progress_path = file_path.parent.joinpath(f"{file_path.suffix[1:]}_progress.json")
+        progress_path = file_path.parent.joinpath(f"{progress_type}_progress.json")
         with open(progress_path, "w") as f:
             f.write(json.dumps(progress))   
     elif d['status'] == 'finished':
@@ -106,7 +115,7 @@ def ydl_progress(d):
             "pct": escape_ansi(d["_percent_str"]) if "_percent_str" in d else None,
         }
         file_path = Path(d["filename"])
-        progress_path = file_path.parent.joinpath(f"{file_path.suffix[1:]}_progress.json")
+        progress_path = file_path.parent.joinpath(f"{progress_type}_progress.json")
         with open(progress_path, "w") as f:
             f.write(json.dumps(progress))   
 
@@ -155,6 +164,44 @@ def get_fs_downloads():
             "thumbnail": thumb_url,
         })
     return downloads
+
+def get_off_youtube_video(video_id: str, destination: str, itag: int, filename: str = None):
+    """
+    download a single video
+    """
+    destination = Path(destination)
+    if not destination.exists():
+        destination.mkdir(parents=True)
+    video = json.loads(db.get(video_id))
+    video_name = video["title"]
+    if filename:
+        video_name = filename
+    video_name = video_name.replace(",", "").replace("|", "").replace("/", "")
+    logger = Logging(video["host"]).get_logger()
+    logger.info(f"Downloading video: {video_name} ...")
+    destination = destination.joinpath(video_name)
+    for stream in video["streams"]:
+        if stream["itag"] == itag:
+            video_format = stream
+            break
+    try:
+        logger.info(f"Getting video ...")
+        video_dest = str(destination.joinpath(f"{video_name}.{video_format['mime_type']}"))
+        yt_dlp.YoutubeDL({
+            "outtmpl": video_dest,
+            "logger": logger,
+            "format": video_format["itag"],
+            "progress_hooks": [ydl_progress],
+        }).download([video["_url"]])
+    except Exception as e:
+        logger.error("Error downloading video")
+        logger.error(e)
+        return False
+    logger.info("Video downloaded to: %s" % video_dest)
+    key_file = destination.joinpath(f".key")
+    with open(key_file, "w") as f:
+        f.write(video['_keyname'])
+    db.lpush("downloads", video['_keyname'])
 
 def get_video(video_id: str, destination: str, video_subdir: bool = True, only_audio: bool = False, itag: int = None, filename: str = None):
     """
@@ -225,6 +272,14 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
     for stream in video["formats"]:
         if stream["audio_ext"] is not None and stream["audio_ext"] != "none" and stream["abr"] is not None:
             audio_streams.append(stream)
+    if language_filter is not None:
+        old_streams = audio_streams.copy()
+        for stream in audio_streams:
+            if "language" in stream and stream["language"] not in language_filter:
+                audio_streams.remove(stream)
+        if len(audio_streams) == 0:
+            logger.warn("No audio streams found with language filter: %s, proceeding without filter" % language_filter)
+            audio_streams = old_streams
     audio_streams = sorted(audio_streams, key=lambda x: x["abr"], reverse=True)
     audio_format = audio_streams[0]
     yt_dlp.YoutubeDL({
@@ -342,10 +397,17 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
     Get video info from YouTube and cache it in Redis for 24 hours.
     """
     parsed_url = urlparse(video_id)
-    parsed_args = parse_qs(parsed_url.query)
-    real_id = parsed_args["v"][0]
-    hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
-    key_name = f"video:{hashed_url}"
+    _yt = True
+    if parsed_url.netloc == "www.youtube.com":
+        parsed_args = parse_qs(parsed_url.query)
+        real_id = parsed_args["v"][0]
+        hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
+        key_name = f"video:{hashed_url}"
+    else:
+        _yt = False
+        real_id = video_id
+        hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
+        key_name = f"video:{hashed_url}"
     if db.exists(key_name):
         info = json.loads(db.get(key_name))
         if info["_pull_time"] + 86400 > int(datetime.now().timestamp()):
@@ -413,22 +475,41 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             "_error": str(e)
         }
 
-    info = {
-        "id": video["id"],
-        # Remove commas due to plex bug which causes incorrect 
-        # media to be returned when title contains comma.
-        "_keyname": key_name,
-        "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
-        "description": video["description"],
-        "thumbnail": video["thumbnail"],
-        "author": video["uploader"],
-        "length": video["duration"],
-        "views": video["view_count"],
-        "rating": video["average_rating"],
-        "publish_date": datetime.strptime(video["upload_date"], "%Y%m%d").timestamp(),
-        "keywords": video["tags"],
-        "streams": streams
-    }
+    if _yt:
+        info = {
+            "id": video["id"],
+            # Remove commas due to plex bug which causes incorrect 
+            # media to be returned when title contains comma.
+            "_keyname": key_name,
+            "_youtube": True,
+            "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
+            "description": video["description"],
+            "thumbnail": video["thumbnail"],
+            "author": video["uploader"],
+            "length": video["duration"],
+            "views": video["view_count"],
+            "rating": video["average_rating"],
+            "publish_date": datetime.strptime(video["upload_date"], "%Y%m%d").timestamp(),
+            "keywords": video["tags"],
+            "streams": streams
+        }
+    else:
+        info = {
+            "id": video["id"],
+            # Remove commas due to plex bug which causes incorrect 
+            # media to be returned when title contains comma.
+            "_keyname": key_name,
+            "_youtube": False,
+            "_url": video_id,
+            "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
+            "description": video["description"] if "description" in video else None,
+            "thumbnail": video["thumbnail"] if "thumbnail" in video else None,
+            "author": video["uploader"] if "uploader" in video else None,
+            "length": video["duration"] if "duration" in video else None,
+            "publish_date": datetime.strptime(video["upload_date"], "%Y%m%d").timestamp() if "upload_date" in video else None,
+            "host": parsed_url.netloc,
+            "streams": streams
+        }
     info["_type"] = "video"
     info["_pull_time"] = int(datetime.now().timestamp())
     info_dump = json.dumps(info)

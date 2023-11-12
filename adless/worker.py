@@ -1,5 +1,5 @@
 from clilib.builders.app import EasyCLI
-from adless.tools import get_playlist_info, get_video, get_playlist_videos
+from adless.tools import get_playlist_info, get_video, get_playlist_videos, get_off_youtube_video
 from pathlib import Path
 import shutil
 import redis
@@ -25,15 +25,18 @@ def process_download(item):
         item["only_audio"] = False
     key_name = item["id"]
     info = json.loads(db.get(key_name))
-    if info["_type"] == "video":
-        full_url = f"https://www.youtube.com/watch?v={info['id']}"
-        get_video(full_url, audio_dir if item["only_audio"] else video_dir, itag=item["itag"], only_audio=item["only_audio"])
-    elif info["_type"] == "playlist":
-        full_url = f"https://www.youtube.com/playlist?list={info['id']}"
-        get_playlist_videos(full_url, audio_dir if item["only_audio"] else video_dir, only_audio=item["only_audio"])
+    if info["_youtube"]:
+        if info["_type"] == "video":
+            full_url = f"https://www.youtube.com/watch?v={info['id']}"
+            get_video(full_url, audio_dir if item["only_audio"] else video_dir, itag=item["itag"], only_audio=item["only_audio"])
+        elif info["_type"] == "playlist":
+            full_url = f"https://www.youtube.com/playlist?list={info['id']}"
+            get_playlist_videos(full_url, audio_dir if item["only_audio"] else video_dir, only_audio=item["only_audio"])
+        else:
+            print(f"[{info['id']}] Warning: Invalid type: {info['_type']}")
+            return
     else:
-        print(f"[{info['id']}] Warning: Invalid type: {info['_type']}")
-        return
+        get_off_youtube_video(item["id"], video_dir, itag=item["itag"])
     
 def process_delete(item):
     video_path = video_dir / item
@@ -52,20 +55,6 @@ def worker():
         while True:
             qi = db.lpop("download_queue")
             if qi:
-                # item = json.loads(qi)
-                # if "only_audio" not in item:
-                #     item["only_audio"] = False
-                # key_name = item["id"]
-                # info = json.loads(db.get(key_name))
-                # if info["_type"] == "video":
-                #     full_url = f"https://www.youtube.com/watch?v={info['id']}"
-                #     get_video(full_url, audio_dir if item["only_audio"] else video_dir, itag=item["itag"], only_audio=item["only_audio"])
-                # elif info["_type"] == "playlist":
-                #     full_url = f"https://www.youtube.com/playlist?list={info['id']}"
-                #     get_playlist_videos(full_url, audio_dir if item["only_audio"] else video_dir, only_audio=item["only_audio"])
-                # else:
-                #     print(f"[{info['id']}] Warning: Invalid type: {info['_type']}")
-                #     continue
                 process_download(qi)
             else:
                 print("Download queue empty. Checking delete queue...")

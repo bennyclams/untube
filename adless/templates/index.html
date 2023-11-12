@@ -33,10 +33,14 @@
                     </div>
                 </div>
             </div>
-            {% if download._type == 'video' %}
-                <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
-            {% elif download._type == 'playlist' %}
-                <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
+            {% if download._youtube %}
+                {% if download._type == 'video' %}
+                    <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
+                {% elif download._type == 'playlist' %}
+                    <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
+                {% endif %}
+            {% else %}
+                <a href="{{ url_for('video_info', v=download._url, yt='no') }}" class="stretched-link"></a>
             {% endif %}
         </div>
         {% endfor %}
@@ -77,10 +81,14 @@
                     </div>
                 </div>
             </div>
-            {% if search._type == 'video' %}
-                <a href="{{ url_for('video_info', v=search.id) }}" class="stretched-link"></a>
-            {% elif search._type == 'playlist' %}
-                <a href="{{ url_for('playlist_info', list=search.id) }}" class="stretched-link"></a>
+            {% if search._youtube %}
+                {% if search._type == 'video' %}
+                    <a href="{{ url_for('video_info', v=search.id) }}" class="stretched-link"></a>
+                {% elif search._type == 'playlist' %}
+                    <a href="{{ url_for('playlist_info', list=search.id) }}" class="stretched-link"></a>
+                {% endif %}
+            {% else %}
+                <a href="{{ url_for('video_info', v=search._url, yt='no') }}" class="stretched-link"></a>
             {% endif %}
         </div>
         {% endfor %}
@@ -121,10 +129,14 @@
                     </div>
                 </div>
             </div>
-            {% if download._type == 'video' %}
-                <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
-            {% elif download._type == 'playlist' %}
-                <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
+            {% if download._youtube %}
+                {% if download._type == 'video' %}
+                    <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
+                {% elif download._type == 'playlist' %}
+                    <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
+                {% endif %}
+            {% else %}
+                <a href="{{ url_for('video_info', v=download._url, yt='no') }}" class="stretched-link"></a>
             {% endif %}
         </div>
         {% endfor %}

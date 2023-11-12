@@ -102,6 +102,12 @@ def content_info():
         url = request.form["url"]
     hashed_url = sha1(url.encode("utf-8")).hexdigest()
     parsed_url = urlparse(url)
+    if parsed_url.netloc != "youtu.be" and parsed_url.netloc != "www.youtube.com" and parsed_url.netloc != "youtube.com":
+        hashed_url = sha1(url.encode("utf-8")).hexdigest()
+        key_name = f"video:{hashed_url}"
+        db.lpush("recent_searches", key_name)
+        db.ltrim("recent_searches", 0, 10)
+        return redirect(url_for("video_info", v=url, yt="no"))
     if parsed_url.netloc == "youtu.be":
         new_url = unshorten(url)
         hashed_url = sha1(new_url.encode("utf-8")).hexdigest()
@@ -134,12 +140,19 @@ def content_info():
 @app.route("/info/video/", methods=["GET"])
 def video_info():
     video_id = request.args.get("v")
+    _yt = request.args.get("yt", "yes") == "yes"
     bust_cache = request.args.get("bust_cache", "no") == "yes"
-    full_url = f"https://www.youtube.com/watch?v={video_id}"
-    info = get_video_info(full_url, bust_cache=bust_cache)
-    info["length"] = str(timedelta(seconds=info["length"]))
-    info["progress"] = get_progress(info["title"])
-    return render_template("video_info.html", **info)
+    if _yt:
+        full_url = f"https://www.youtube.com/watch?v={video_id}"
+        info = get_video_info(full_url, bust_cache=bust_cache)
+        info["length"] = str(timedelta(seconds=info["length"]))
+        info["progress"] = get_progress(info["title"])
+        return render_template("video_info.html", **info)
+    else:
+        info = get_video_info(video_id, bust_cache=bust_cache)
+        info["length"] = str(timedelta(seconds=info["length"]))
+        info["progress"] = get_progress(info["title"])
+        return render_template("off_youtube_info.html", **info)
 
 
 @app.route("/info/playlist/", methods=["GET"])
@@ -156,10 +169,16 @@ def playlist_info():
 @app.route("/queue/", methods=["GET"])
 def queue():
     content_key = request.args.get("id")
+    _yt = request.args.get("yt", "yes") == "yes"
+    title = request.args.get("title", None)
     itag = request.args.get("itag", None)
     only_audio = (request.args.get("only_audio", "no") == "yes")
     if db.exists(content_key):
         info = json.loads(db.get(content_key))
+        if not _yt:
+            if title:
+                info["title"] = title
+                db.set(content_key, json.dumps(info))
         queue_info = {
             "id": content_key,
             "itag": itag,
@@ -167,10 +186,13 @@ def queue():
         }
         db.lpush("download_queue", json.dumps(queue_info))
         flash(f"Successfully added {info['_type']} '{info['title']}' to the download queue", "success")
-        if info["_type"] == "video":
-            return redirect(url_for("video_info", v=info["id"]))
-        elif info["_type"] == "playlist":
-            return redirect(url_for("playlist_info", list=info["id"]))
+        if _yt:
+            if info["_type"] == "video":
+                return redirect(url_for("video_info", v=info["id"]))
+            elif info["_type"] == "playlist":
+                return redirect(url_for("playlist_info", list=info["id"]))
+        else:
+            return redirect(url_for("video_info", v=info["_url"], yt="no"))
     else:
         flash("Content not yet indexed. Try searching for this content by non-shortened URL.", "warning")
         return redirect(url_for("index"))
