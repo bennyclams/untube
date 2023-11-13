@@ -42,6 +42,15 @@ def media_exists(title: str):
             return True
     return False
 
+def thumbnail_exists(title: str):
+    """
+    Check if a given media has a thumbnail.
+    """
+    path = video_dir.joinpath(title)
+    if path.joinpath(f"{title}.jpg").exists():
+        return True
+    return False
+
 def escape_ansi(line):
     ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', line).strip()
@@ -197,6 +206,15 @@ def get_off_youtube_video(video_id: str, destination: str, itag: int, filename: 
         logger.error("Error downloading video")
         logger.error(e)
         return False
+    # Generate thumbnail with ffmpeg
+    logger.info("Generating thumbnail ...")
+    thumbnail_dest = str(destination.joinpath(f"{video_name}.jpg"))
+    try:
+        _v = ffmpeg.input(video_dest)
+        ffmpeg.output(_v, thumbnail_dest, ss='00:00:01.000', vframes=1).run()
+    except Exception as e:
+        logger.error("Error generating thumbnail")
+        logger.error(e)
     logger.info("Video downloaded to: %s" % video_dest)
     key_file = destination.joinpath(f".key")
     with open(key_file, "w") as f:
@@ -410,10 +428,13 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
         key_name = f"video:{hashed_url}"
     if db.exists(key_name):
         info = json.loads(db.get(key_name))
+        if thumbnail_exists(info["title"]):
+            info["thumbnail"] = f"/api/v1/thumbnail/{info['_keyname']}/"
         if info["_pull_time"] + 86400 > int(datetime.now().timestamp()):
             info["_keyname"] = key_name
             info["_downloaded"] = media_exists(info["title"])
             if not bust_cache:
+                db.set(key_name, json.dumps(info))
                 return info
             else:
                 db.delete(key_name)
@@ -478,11 +499,10 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
     if _yt:
         info = {
             "id": video["id"],
-            # Remove commas due to plex bug which causes incorrect 
-            # media to be returned when title contains comma.
             "_keyname": key_name,
             "_youtube": True,
-            "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
+            # "title": video["title"].replace(",", "").replace("|", "").replace("/", ""), shouldn't need to do this anymore (minus slashes)
+            "title": video["title"].replace("/", "-"),
             "description": video["description"],
             "thumbnail": video["thumbnail"],
             "author": video["uploader"],
@@ -501,7 +521,8 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             "_keyname": key_name,
             "_youtube": False,
             "_url": video_id,
-            "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
+            # "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
+            "title": video["title"].replace("/", "-"),
             "description": video["description"] if "description" in video else None,
             "thumbnail": video["thumbnail"] if "thumbnail" in video else None,
             "author": video["uploader"] if "uploader" in video else None,

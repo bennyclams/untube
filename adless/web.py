@@ -177,7 +177,7 @@ def queue():
         info = json.loads(db.get(content_key))
         if not _yt:
             if title:
-                info["title"] = title
+                info["title"] = title.replace("/", "-")
                 db.set(content_key, json.dumps(info))
         queue_info = {
             "id": content_key,

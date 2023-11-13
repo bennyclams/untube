@@ -46,7 +46,11 @@ def delete():
 
 @v1.route("/thumbnail/<video_name>/", methods=["GET"])
 def thumbnail(video_name):
-    video_name = base64.b64decode(video_name).decode("utf-8")
+    if db.exists(video_name):
+        video_info = json.loads(db.get(video_name))
+        video_name = video_info["title"]
+    else:
+        return f"Not Found: {video_name}", 404
     video_path = Path(video_dir).joinpath(video_name)
     thumb_path = video_path.joinpath(f"{video_name}.jpg")
     if not thumb_path.exists():
