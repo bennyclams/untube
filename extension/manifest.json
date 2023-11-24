@@ -1,0 +1,34 @@
+{
+    "manifest_version": 2,
+    "name": "Untube Helper",
+    "version": "1.0",
+    
+    "description": "Adds popup which lists available downloads for untube, with links to download them.",
+    "homepage_url": "https://example.com/",
+    "icons": {
+        "48": "icons/stream-48.png"
+    },
+    
+    "permissions": ["storage", "webRequest", "<all_urls>", "activeTab"],
+    
+    "browser_action": {
+        "default_icon": "icons/stream-48.png",
+        "default_title": "Streams",
+        "default_popup": "popup/streams.html"
+    },
+    
+    "background": {
+        "scripts": ["background.js"],
+        "persistent": false
+    },
+    
+    "options_ui": {
+        "page": "options/options.html"
+    },
+    
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "untube-helper@symnet.io"
+        }
+    }
+}

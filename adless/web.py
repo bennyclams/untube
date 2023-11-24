@@ -149,9 +149,12 @@ def video_info():
         info["progress"] = get_progress(info["title"])
         return render_template("video_info.html", **info)
     else:
+        custom_title = request.args.get("title", None)
         info = get_video_info(video_id, bust_cache=bust_cache)
         info["length"] = str(timedelta(seconds=info["length"]))
         info["progress"] = get_progress(info["title"])
+        if custom_title:
+            info["title"] = custom_title.replace("/", "-")
         return render_template("off_youtube_info.html", **info)
 
 

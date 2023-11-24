@@ -31,6 +31,7 @@ else:
 language_filter = os.getenv("LANGUAGE_FILTER", None)
 if language_filter is not None:
     language_filter = language_filter.split(",")
+cookies_path = os.getenv("COOKIES_PATH", None)
     
 def media_exists(title: str):
     """
@@ -185,7 +186,7 @@ def get_off_youtube_video(video_id: str, destination: str, itag: int, filename: 
     video_name = video["title"]
     if filename:
         video_name = filename
-    video_name = video_name.replace(",", "").replace("|", "").replace("/", "")
+    video_name = video_name.replace("/", "-")
     logger = Logging(video["host"]).get_logger()
     logger.info(f"Downloading video: {video_name} ...")
     destination = destination.joinpath(video_name)
@@ -228,11 +229,17 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
     destination = Path(destination)
     if not destination.exists():
         destination.mkdir(parents=True)
-    video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+    if cookies_path:
+        print("Using cookies")
+        video = yt_dlp.YoutubeDL({
+            "cookiefile": cookies_path
+        }).extract_info(video_id, download=False)
+    else:
+        video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
     video_name = video["title"]
     if filename:
         video_name = filename
-    video_name = video_name.replace(",", "").replace("|", "").replace("/", "")
+    video_name = video_name.replace("/", "-")
     logger = Logging(video["id"]).get_logger()
     logger.info(f"Downloading video: {video_name} ...")
     if not only_audio:
@@ -249,12 +256,6 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
             format_pairs = []
             streams = []
             for stream in video["formats"]:
-                # if "format_note" not in stream:
-                #     print(stream)
-                #     continue
-                # if stream["format_note"] == "tiny":
-                #     continue
-                format_note = "%sp@%s" % (stream["height"], stream["fps"]) if "height" in stream else "audio only"
                 if "height" in stream and stream["height"] is not None:
                     if stream["video_ext"] not in format_filter:
                         continue
@@ -270,13 +271,22 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
         def get_video():
             try:
                 logger.info(f"Getting video stream ...")
-                yt_dlp.YoutubeDL({
-                    "outtmpl": str(destination.joinpath(f"{video_name}.video")),
-                    # "progress_hooks": [on_progress],
-                    "logger": logger,
-                    "format": video_format["format_id"],
-                    "progress_hooks": [ydl_progress],
-                }).download([video_id])
+                if cookies_path:
+                    print("Using cookies")
+                    yt_dlp.YoutubeDL({
+                        "outtmpl": str(destination.joinpath(f"{video_name}.video")),
+                        "logger": logger,
+                        "format": video_format["format_id"],
+                        "progress_hooks": [ydl_progress],
+                        "cookiefile": cookies_path
+                    }).download([video_id])
+                else:
+                    yt_dlp.YoutubeDL({
+                        "outtmpl": str(destination.joinpath(f"{video_name}.video")),
+                        "logger": logger,
+                        "format": video_format["format_id"],
+                        "progress_hooks": [ydl_progress],
+                    }).download([video_id])
             except Exception:
                 logger.exception("Error downloading video")
                 return False
@@ -300,13 +310,22 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
             audio_streams = old_streams
     audio_streams = sorted(audio_streams, key=lambda x: x["abr"], reverse=True)
     audio_format = audio_streams[0]
-    yt_dlp.YoutubeDL({
-        "outtmpl": str(destination.joinpath(f"{video_name}.audio")),
-        # "progress_hooks": [on_progress],
-        "logger": logger,
-        "format": audio_format["format_id"],
-        "progress_hooks": [ydl_progress],
-    }).download([video_id])
+    if cookies_path:
+        print("Using cookies")
+        yt_dlp.YoutubeDL({
+            "outtmpl": str(destination.joinpath(f"{video_name}.audio")),
+            "logger": logger,
+            "format": audio_format["format_id"],
+            "progress_hooks": [ydl_progress],
+            "cookiefile": cookies_path
+        }).download([video_id])
+    else:
+        yt_dlp.YoutubeDL({
+            "outtmpl": str(destination.joinpath(f"{video_name}.audio")),
+            "logger": logger,
+            "format": audio_format["format_id"],
+            "progress_hooks": [ydl_progress],
+        }).download([video_id])
 
     if not only_audio:
         video_thread.join()
@@ -444,7 +463,14 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
         if entry:
             video = entry
         else:
-            video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+            if cookies_path:
+                print("Using cookies")
+                video = yt_dlp.YoutubeDL({
+                    "cookiefile": cookies_path
+                }).extract_info(video_id, download=False)
+            else:
+                video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+            # video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
         format_pairs = []
         streams = []
         for stream in video["formats"]:
