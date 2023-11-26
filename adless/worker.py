@@ -1,5 +1,5 @@
 from clilib.builders.app import EasyCLI
-from adless.tools import get_playlist_info, get_video, get_playlist_videos, get_off_youtube_video
+from adless.tools import get_playlist_info, get_video, get_off_youtube_video
 from pathlib import Path
 import shutil
 import redis
@@ -29,9 +29,10 @@ def process_download(item):
         if info["_type"] == "video":
             full_url = f"https://www.youtube.com/watch?v={info['id']}"
             get_video(full_url, audio_dir if item["only_audio"] else video_dir, itag=item["itag"], only_audio=item["only_audio"])
-        elif info["_type"] == "playlist":
-            full_url = f"https://www.youtube.com/playlist?list={info['id']}"
-            get_playlist_videos(full_url, audio_dir if item["only_audio"] else video_dir, only_audio=item["only_audio"])
+        # Playlists are queued as single videos now 
+        # elif info["_type"] == "playlist":
+        #     full_url = f"https://www.youtube.com/playlist?list={info['id']}"
+        #     get_playlist_videos(full_url, audio_dir if item["only_audio"] else video_dir, only_audio=item["only_audio"])
         else:
             print(f"[{info['id']}] Warning: Invalid type: {info['_type']}")
             return

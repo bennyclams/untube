@@ -378,23 +378,23 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
         f.write(key_name)
     db.lpush("downloads", key_name)
 
-def get_playlist_videos(playlist_id: str, destination: str, only_audio: bool = False):
-    """
-    download all videos in a playlist
-    """
-    destination = Path(destination)
-    if not destination.exists():
-        destination.mkdir(parents=True)
-    playlist = Playlist(playlist_id)
-    logger = Logging(video.video_id).get_logger()
-    logger.info(f"Downloading playlist: {playlist.title}")
-    # destination = destination.joinpath(playlist.title)
-    for i, video in enumerate(playlist.video_urls):
-        get_video(video, destination, only_audio=only_audio)
-        # video.download(destination=destination, resolution="720p"
-    full_url = f"https://www.youtube.com/playlist?list={playlist.playlist_id}"
-    key_name = f"playlist:{sha1(full_url.encode('utf-8')).hexdigest()}"
-    db.lpush("downloads", key_name)
+# def get_playlist_videos(playlist_id: str, destination: str, only_audio: bool = False):
+#     """
+#     download all videos in a playlist
+#     """
+#     destination = Path(destination)
+#     if not destination.exists():
+#         destination.mkdir(parents=True)
+#     playlist = yt_dlp.YoutubeDL().extract_info(playlist_id, download=False)
+#     logger = Logging(video.video_id).get_logger()
+#     logger.info(f"Downloading playlist: {playlist.title}")
+#     # destination = destination.joinpath(playlist.title)
+#     for i, video in enumerate(playlist.video_urls):
+#         get_video(video, destination, only_audio=only_audio)
+#         # video.download(destination=destination, resolution="720p"
+#     full_url = f"https://www.youtube.com/playlist?list={playlist.playlist_id}"
+#     key_name = f"playlist:{sha1(full_url.encode('utf-8')).hexdigest()}"
+#     db.lpush("downloads", key_name)
 
 def get_playlist_info(playlist_id: str):
     """
@@ -408,7 +408,9 @@ def get_playlist_info(playlist_id: str):
             info["_keyname"] = key_name
             return info
     # playlist = Playlist(playlist_id)
-    playlist = yt_dlp.YoutubeDL({"quiet": True}).extract_info(playlist_id, download=False)
+    playlist = yt_dlp.YoutubeDL({
+        "ignoreerrors": True
+    }).extract_info(playlist_id, download=False)
     # return playlist
     info = {
         "id": playlist['id'],
@@ -419,7 +421,7 @@ def get_playlist_info(playlist_id: str):
         "author": playlist['uploader'],
         "length": len(playlist['entries']),
         # "views": playlist.views,
-        "videos": [get_video_info(video['original_url'], video) for video in playlist['entries']]
+        "videos": [get_video_info(video['original_url'], video) for video in playlist['entries'] if video]
     }
     info["thumbnail"] = info["videos"][0]["thumbnail"]
     info["_type"] = "playlist"

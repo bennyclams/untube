@@ -161,6 +161,7 @@
                 $("#qualitySelect_" + id).prop("disabled", false);
             }
         });
+        refreshMasonry();
         $('#optionsModal').on( 'shown.bs.modal', function() {
             refreshMasonry();
         });
