@@ -1,4 +1,5 @@
 from datetime import datetime
+import shutil
 from clilib.util.logging import Logging
 from urllib.parse import parse_qs, urlparse
 from pathlib import Path
@@ -13,6 +14,7 @@ import json
 import sys
 import re
 import os
+from mutagen.mp4 import MP4
 
 
 db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
@@ -55,6 +57,12 @@ def thumbnail_exists(title: str):
 def escape_ansi(line):
     ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', line).strip()
+
+def sanitize_filename(filename: str):
+    """
+    Sanitize a filename to remove invalid characters.
+    """
+    return filename.replace("/", "-").replace(":", "-").replace("?", "").replace("!", "").replace("&", "-").replace("%", "-")
 
 def get_progress(video_name):
     """
@@ -168,8 +176,8 @@ def get_fs_downloads():
             "_keyname": encoded_name,
             "id": encoded_name,
             "title": _video_dir.name,
-            "author": "Unavailable",
-            "length": "Unavailable",
+            "author": "Unknown",
+            "length": "Unknown",
             "type": "video",
             "thumbnail": thumb_url,
         })
@@ -186,7 +194,7 @@ def get_off_youtube_video(video_id: str, destination: str, itag: int, filename: 
     video_name = video["title"]
     if filename:
         video_name = filename
-    video_name = video_name.replace("/", "-")
+    video_name = sanitize_filename(video_name)
     logger = Logging(video["host"]).get_logger()
     logger.info(f"Downloading video: {video_name} ...")
     destination = destination.joinpath(video_name)
@@ -218,11 +226,21 @@ def get_off_youtube_video(video_id: str, destination: str, itag: int, filename: 
         logger.error(e)
     logger.info("Video downloaded to: %s" % video_dest)
     key_file = destination.joinpath(f".key")
+    if "author" in video:
+        mp4 = MP4(video_dest)
+        mp4["\xa9gen"] = [video["author"]]
+        mp4.save()
+    # else:
+    #     video_info = json.loads(db.get(key_name))
+    #     if "author" in video_info:
+    #         mp4 = MP4(output_file)
+    #         mp4["\xa9gen"] = [video_info["author"]]
+    #         mp4.save()
     with open(key_file, "w") as f:
         f.write(video['_keyname'])
     db.lpush("downloads", video['_keyname'])
 
-def get_video(video_id: str, destination: str, video_subdir: bool = True, only_audio: bool = False, itag: int = None, filename: str = None):
+def get_video(video_id: str, destination: str, video_subdir: bool = True, only_audio: bool = False, itag: int = None, filename: str = None, channel_mode: bool = False):
     """
     download a single video
     """
@@ -236,14 +254,17 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
         }).extract_info(video_id, download=False)
     else:
         video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
-    video_name = video["title"]
+    video_name = sanitize_filename(video["title"])
+    channel_name = video["uploader"] if "uploader" in video else "Unknown"
     if filename:
         video_name = filename
-    video_name = video_name.replace("/", "-")
+    video_name = sanitize_filename(video_name)
     logger = Logging(video["id"]).get_logger()
     logger.info(f"Downloading video: {video_name} ...")
     if not only_audio:
         if video_subdir:
+            if channel_mode:
+                destination = destination.joinpath(channel_name)
             destination = destination.joinpath(video_name)
         if not destination.exists():
             destination.mkdir(parents=True)
@@ -338,7 +359,9 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
 
     video_file = destination.joinpath(f"{video_name}.video")
     audio_file = destination.joinpath(f"{video_name}.audio")
-    output_file = destination.joinpath(f"{video_name}.%s" % video_format["ext"])
+    # output_file = destination.joinpath(f"{video_name}.%s" % video_format["ext"])
+    output_file = destination.joinpath(f"{video_name}.mp4")
+    # final_file = destination.joinpath(f"{video_name}.mp4")
 
     if not only_audio:
         logger.info("Merging streams ...")
@@ -352,7 +375,28 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
         if output_file.exists():
             output_file.unlink()
         try:
-            ffmpeg.output(_v, _a, str(output_file), acodec='copy', vcodec='copy', strict="-2").run()
+            ffmpeg.output(_v, _a, str(output_file), acodec='copy', vcodec='copy', strict="-2").run(capture_stdout=True, capture_stderr=True)
+        except ffmpeg.Error as e:
+            logger.error("Error merging audio and video streams: %s" % e)
+            _p.unlink()
+            destination.joinpath(".processing_error").touch()
+            if db.exists(video_id):
+                video_info = json.loads(db.get(video_id))
+                video_info["error"] = "Failed to merge audio and video streams due to ffmpeg error."
+                db.set(video_id, json.dumps(video_info))
+            error_entry = {
+                "item": {
+                    "id": video_id,
+                    "itag": itag,
+                    "only_audio": only_audio
+                }, 
+                "error": str(e),
+                "error_details": {
+                    "stderr": e.stderr.decode("utf-8"),
+                    "stdout": e.stdout.decode("utf-8")
+                }
+            }
+            return False
         except Exception as e:
             logger.exception("Error merging audio and video streams: %s" % e)
             _p.unlink()
@@ -363,16 +407,39 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
                 video_info = json.loads(db.get(key_name))
                 video_info["error"] = str(e)
                 db.set(key_name, json.dumps(video_info))
-            db.lpush("errors", key_name)
+            error_entry = {
+                "item": {
+                    "id": key_name,
+                    "itag": itag,
+                    "only_audio": only_audio
+                }, 
+                "error": str(e)
+            }
+            db.lpush("errors", json.dumps(error_entry))
             return False
             
         video_file.unlink()
         audio_file.unlink()
         _p.unlink()
         _pd.touch()
+        # Write genre tag to video file
+        #     output_file.unlink()
+        # else:
+        #     shutil.move(str(output_file), str(final_file))
 
     full_url = f"https://www.youtube.com/watch?v={video['id']}"
     key_name = f"video:{sha1(full_url.encode('utf-8')).hexdigest()}"
+    if not only_audio:
+        if "uploader" in video:
+            mp4 = MP4(output_file)
+            mp4["\xa9gen"] = [video["uploader"]]
+            mp4.save()
+        else:
+            video_info = json.loads(db.get(key_name))
+            if "author" in video_info:
+                mp4 = MP4(output_file)
+                mp4["\xa9gen"] = [video_info["author"]]
+                mp4.save()
     key_file = destination.joinpath(f".key")
     with open(key_file, "w") as f:
         f.write(key_name)
@@ -435,23 +502,36 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
     """
     Get video info from YouTube and cache it in Redis for 24 hours.
     """
-    parsed_url = urlparse(video_id)
-    _yt = True
-    if parsed_url.netloc == "www.youtube.com":
-        parsed_args = parse_qs(parsed_url.query)
-        real_id = parsed_args["v"][0]
-        hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
-        key_name = f"video:{hashed_url}"
+    # parsed_url = urlparse(video_id)
+    # _yt = True
+    # if parsed_url.netloc == "www.youtube.com":
+    #     parsed_args = parse_qs(parsed_url.query)
+    #     real_id = parsed_args["v"][0]
+    #     hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
+    #     key_name = f"video:{hashed_url}"
+    # else:
+    #     _yt = False
+    #     real_id = video_id
+    #     hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
+    #     key_name = f"video:{hashed_url}"
+    if video_id.startswith("video:"):
+        key_name = video_id
+        cached = True
+        bust_cache = False
     else:
-        _yt = False
-        real_id = video_id
-        hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
-        key_name = f"video:{hashed_url}"
+        cached = False
+        parsed_url = urlparse(video_id)
+        parsed_args = parse_qs(parsed_url.query)
+        key_name, _yt = get_keyname(video_id)
+        if _yt:
+            real_id = parsed_args["v"][0]
+        else:
+            real_id = video_id
     if db.exists(key_name):
         info = json.loads(db.get(key_name))
         if thumbnail_exists(info["title"]):
             info["thumbnail"] = f"/api/v1/thumbnail/{info['_keyname']}/"
-        if info["_pull_time"] + 86400 > int(datetime.now().timestamp()):
+        if (info["_pull_time"] + 86400 > int(datetime.now().timestamp())) or cached:
             info["_keyname"] = key_name
             info["_downloaded"] = media_exists(info["title"])
             if not bust_cache:
@@ -459,6 +539,9 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
                 return info
             else:
                 db.delete(key_name)
+    else:
+        if cached:
+            raise KeyError("Video not found in cache")
     try:
         # print("Getting video info (%s) ..." % video_id)
         # video = YouTube(video_id)
@@ -473,8 +556,11 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             else:
                 video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
             # video = yt_dlp.YoutubeDL().extract_info(video_id, download=False)
+        video_name = sanitize_filename(video["title"])
         format_pairs = []
         streams = []
+        invalid_streams = []
+        original_formats_by_itag = { stream["format_id"]: stream for stream in video["formats"] }
         for stream in video["formats"]:
             # if "format_note" not in stream:
             #     print(stream)
@@ -484,11 +570,38 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             format_note = "%sp@%s (%s)" % (stream["height"], stream["fps"], stream["video_ext"]) if "height" in stream else "audio only"
             if "resolution" in stream and stream["resolution"] is not None:
                 if stream["video_ext"] not in format_filter:
+                    invalid_streams.append({
+                        "itag": stream["format_id"],
+                        "mime_type": stream["video_ext"],
+                        "height": stream["height"] if "height" in stream else None,
+                        "resolution": stream["resolution"],
+                        "format": stream["format_note"] if "format_note" in stream else None,
+                        "fps": stream["fps"] if "fps" in stream else None,
+                        "url": stream["url"]
+                    })
                     continue
                 if stream["height"] not in resolution_filter:
+                    invalid_streams.append({
+                        "itag": stream["format_id"],
+                        "mime_type": stream["video_ext"],
+                        "height": stream["height"] if "height" in stream else None,
+                        "resolution": stream["resolution"],
+                        "format": stream["format_note"] if "format_note" in stream else None,
+                        "fps": stream["fps"] if "fps" in stream else None,
+                        "url": stream["url"]
+                    })
                     continue
                 format_pair = "%s/%s" % (stream["resolution"], stream["video_ext"])
                 if format_pair in format_pairs:
+                    invalid_streams.append({
+                        "itag": stream["format_id"],
+                        "mime_type": stream["video_ext"],
+                        "height": stream["height"],
+                        "resolution": stream["resolution"],
+                        "format": stream["format_note"] if "format_note" in stream else None,
+                        "fps": stream["fps"] if "fps" in stream else None,
+                        "url": stream["url"]
+                    })
                     continue
                 format_pairs.append(format_pair)
 
@@ -497,6 +610,7 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
                     "mime_type": stream["video_ext"],
                     "height": stream["height"],
                     "resolution": stream["resolution"],
+                    "format": stream["format_note"] if "format_note" in stream else stream["format"] if "format" in stream else None,
                     "fps": stream["fps"] if "fps" in stream else None,
                     "url": stream["url"]
                 })
@@ -521,6 +635,7 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             "_keyname": key_name,
             "_downloaded": False,
             "_unavailable": True,
+            "_youtube": _yt,
             "_error": str(e)
         }
 
@@ -530,7 +645,7 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             "_keyname": key_name,
             "_youtube": True,
             # "title": video["title"].replace(",", "").replace("|", "").replace("/", ""), shouldn't need to do this anymore (minus slashes)
-            "title": video["title"].replace("/", "-"),
+            "title": video_name,
             "description": video["description"],
             "thumbnail": video["thumbnail"],
             "author": video["uploader"],
@@ -539,9 +654,16 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             "rating": video["average_rating"],
             "publish_date": datetime.strptime(video["upload_date"], "%Y%m%d").timestamp(),
             "keywords": video["tags"],
-            "streams": streams
+            "streams": streams,
+            "invalid_streams": invalid_streams,
+            "original_formats": original_formats_by_itag
         }
     else:
+        uploader = "Unknown"
+        if "uploader" in video:
+            uploader = video["uploader"]
+        if "author" in video:
+            uploader = video["author"]
         info = {
             "id": video["id"],
             # Remove commas due to plex bug which causes incorrect 
@@ -550,14 +672,16 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
             "_youtube": False,
             "_url": video_id,
             # "title": video["title"].replace(",", "").replace("|", "").replace("/", ""),
-            "title": video["title"].replace("/", "-"),
+            "title": video_name,
             "description": video["description"] if "description" in video else None,
             "thumbnail": video["thumbnail"] if "thumbnail" in video else None,
-            "author": video["uploader"] if "uploader" in video else None,
+            "author": uploader,
             "length": video["duration"] if "duration" in video else None,
             "publish_date": datetime.strptime(video["upload_date"], "%Y%m%d").timestamp() if "upload_date" in video else None,
             "host": parsed_url.netloc,
-            "streams": streams
+            "streams": streams,
+            "invalid_streams": invalid_streams,
+            "original_formats": original_formats_by_itag
         }
     info["_type"] = "video"
     info["_pull_time"] = int(datetime.now().timestamp())
@@ -566,6 +690,17 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
     info["_downloaded"] = media_exists(info["title"])
     info["_unavailable"] = False
     return info
+
+def get_video_title(video_id: str):
+    """
+    Get the title of a video from its ID.
+    """
+    try:
+        video_info = get_video_info(video_id)
+        return video_info["title"]
+    except Exception as e:
+        print(e)
+        return None
 
 def unshorten(url: str):
     """
@@ -584,3 +719,141 @@ def unshorten(url: str):
         elif new_url.path == "/playlist":
             return f"https://www.youtube.com/playlist?list={args['list'][0]}"
     return res.headers["Location"]
+
+def find_existing_channels():
+    """
+    Find all existing channels on the filesystem.
+    """
+    downloads = get_fs_downloads()
+    channels = []
+    for download in downloads:
+        if download["author"] is None:
+            download["author"] = "Unknown"
+        if download["author"] not in channels and download["author"] != "Unknown":
+            channels.append(download["author"])
+    return channels
+
+def fix_channel_tags():
+    """
+    Fix channel tags for all videos on the filesystem.
+    """
+    downloads = get_fs_downloads()
+    for download in downloads:
+        key_name = download["_keyname"]
+        if db.exists(key_name):
+            video_info = json.loads(db.get(key_name))
+            if "author" in video_info:
+                video_path = video_dir / sanitize_filename(video_info['title']) / f"{sanitize_filename(video_info['title'])}.mp4"
+                mp4 = MP4(video_path)
+                if video_info["author"] is None:
+                    video_info["author"] = "Unknown"
+                if video_info["author"] not in mp4["\xa9gen"]:
+                    mp4["\xa9gen"] = [video_info["author"]]
+                    print(f"Fixed channel tag for {video_info['title']}")
+                else:
+                    print(f"Channel tag already correct for {video_info['title']}")
+                mp4.save()
+
+def save_video_info(video_id: str):
+    """
+    Save cached info to disk
+    """
+    if not video_id.startswith("video:"):
+        key_name, _yt = get_keyname(video_id)
+    else:
+        key_name = video_id
+    if db.exists(key_name):
+        video_info = json.loads(db.get(key_name))
+        with open(video_dir.joinpath(video_info["title"], ".info"), "w") as f:
+            f.write(json.dumps(video_info))
+
+def find_removed():
+    """
+    Find videos which have been removed from the filesystem
+    but still exist in the database.
+    """
+    existing_keys = db.keys("video:*")
+    downloads = get_fs_downloads()
+    dl_keys = [d["_keyname"] for d in downloads]
+    removed = []
+    for key in existing_keys:
+        if key not in dl_keys:
+            removed.append(key)
+    return removed
+
+def prune_removed():
+    """
+    Prune videos which have been removed from the filesystem
+    but still exist in the database.
+    """
+    removed_keys = find_removed()
+    for key in removed_keys:
+        db.delete(key)
+
+def move_video(video_id: str, new_title: str):
+    """
+    Move a video to a new title.
+    """
+    keyname, _yt = get_keyname(video_id)
+    if db.exists(keyname):
+        video_info = json.loads(db.get(keyname))
+        old_title = video_info["title"]
+        old_path = video_dir.joinpath(old_title)
+        new_path = video_dir.joinpath(new_title)
+        if new_path.exists():
+            return False
+        old_path_files = [f for f in old_path.iterdir()]
+        for f in old_path_files:
+            shutil.copy2(f, new_path)
+            os.unlink(f)
+        old_path.rmdir()
+        return True
+    return False
+
+def get_keyname(video_id: str):
+    """
+    Get the Redis keyname for a given video ID (video URL).
+    """
+    parsed_url = urlparse(video_id)
+    _yt = True
+    if parsed_url.netloc == "www.youtube.com":
+        # parsed_args = parse_qs(parsed_url.query)
+        hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
+        key_name = f"video:{hashed_url}"
+    else:
+        _yt = False
+        # real_id = video_id
+        hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
+        key_name = f"video:{hashed_url}"
+    return key_name, _yt
+
+def update_video_info(video_id: str, new_info: dict = None, bust_cache: bool = False):
+    """
+    Update video info in Redis.
+    """
+    keyname, _yt = get_keyname(video_id)
+    cached_info = None
+    video_info = None
+    original_name = None
+    if db.exists(keyname):
+        cached_info = json.loads(db.get(keyname))
+        original_name = cached_info["title"]
+    if cached_info:
+        video_info = cached_info
+        if bust_cache:
+            try:
+                video_info = get_video_info(video_id, bust_cache=bust_cache)
+            except Exception as e:
+                print("Error pulling video info: %s, falling back on cache..." % e)
+                video_info = cached_info
+    else:
+        video_info = get_video_info(video_id)
+    # old_info = video_info.copy()
+    if new_info:
+        video_info.update(new_info)
+        if new_info["title"] != original_name:
+            shutil.move
+    
+    key_name = video_info["_keyname"]
+    db.set(key_name, json.dumps(video_info))
+    return video_info

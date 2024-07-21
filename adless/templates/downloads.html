@@ -1,14 +1,28 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row">
+<div class="row d-none" id="optionsRow">
     <div class="col-md-6 offset-md-3">
         <button class="btn btn-danger" id="deleteSelectedDownloads">Delete Selected</button>
     </div>
 </div>
 <div class="row">
-    <div class="col-md-6 offset-md-3 downloads-content">
-        <div class="row" data-masonry='{"itemSelector": ".col-md-3"}'>
+    <div class="col-md-1 offset-md-2">
+        <div class="card mt-3">
+            <div class="card-header">
+                Channels <a href="{{ url_for('downloads') }}" class="float-end">All</a>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for c in channels %}
+                <li class="list-group-item {% if c == channel %}active{% endif %}">
+                    <a class="link-underline link-underline-opacity-0 link-underline-opacity-75-hover {% if c == channel %}text-light link-underline-light{% endif %}" href="{{ url_for('downloads', author=c) }}">{{ c }}</a>
+                </li>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 downloads-content">
+        <div class="row">
             {% for download in downloads %}
             <div class="col-md-3 mt-3 download-item">
                 <div class="card download-card {% if download.delete_queue %}border-danger{% endif %}" id="{{ download._keyname }}">
@@ -24,9 +38,12 @@
                             {% else %}
                             <i>No description available.</i>
                             {% endif %}
+                            <br>
+                            <a href="{{ url_for('video_info', video_id=download._keyname) }}" class="card-link" style="z-index: 1000; position: relative;">More Details</a>
                         </p>
                     </div>
-                    <a href="#" class="stretched-link select-video"></a>
+                    <a href="#" class="stretched-link select-video" style="z-index: 998;"></a>
+                    <!-- <a href="#" class="stretched-link select-video"></a> -->
                 </div>
             </div>
             {% endfor %}
@@ -35,9 +52,28 @@
 </div>
 {% endblock %}
 {% block custom_scripts %}
-<script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+<!-- <script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script> -->
 <script>
+    function updateOptionsRow() {
+        var selectedItems = $('.border-primary').length;
+        if (selectedItems > 0) {
+            $('#optionsRow').removeClass('d-none');
+        } else {
+            $('#optionsRow').addClass('d-none');
+        }
+        $('#deleteSelectedDownloads').text('Delete Selected (' + selectedItems + ')');
+    }
+    function updateMasonry() {
+        var elem = document.querySelector('.downloads-content .row');
+        var msnry = new Masonry(elem, {
+            itemSelector: '.col-md-3'
+        });
+    }
+    $(window).imagesLoaded(function () {
+        updateMasonry();
+    });
     $(document).ready(function () {
+        // updateMasonry();
         $('.select-video').click(function (e) {
             e.preventDefault();
             if ($(this).parent().hasClass('border-danger')) {
@@ -49,6 +85,7 @@
             } else {
                 $(this).parent().addClass('border-primary');
             }
+            updateOptionsRow();
         });
         $('#deleteSelectedDownloads').click(function (e) {
             e.preventDefault();

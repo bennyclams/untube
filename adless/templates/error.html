@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ error.short }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <div class="alert alert-{{ error.level }}" role="alert">
+            <h4 class="alert-heading">{{ error.short }}</h4>
+            <p>{{ error.long }}</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

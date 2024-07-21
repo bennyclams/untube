@@ -1,152 +1,213 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row" data-masonry='{"itemSelector": ".col-md-3"}'>
-    <div class="col-md-3 offset-md-3 col-sm-12">
-        <h3>Recent Downloads</h3>
-        {% if recent_downloads %}
-        {% for download in recent_downloads %}
-        <div class="card mb-3">
-            <div class="row g-0">
-                <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
-                    <img src="{{ download.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+<div class="row">
+    <div class="col-md-6 offset-md-3 mt-3">
+        <div class="row main-content">
+            <div class="col-md-6 col-sm-12" id="inProgress">
+                <h3>In Progress</h3>
+                {% if in_progress %}
+                <div class="card mb-3">
+                    <div class="row g-0">
+                        <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
+                            <img src="{{ in_progress.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+                        </div>
+                        <div class="col-md-7">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ in_progress.title }}</h5>
+                                <p class="card-text">
+                                    {% if in_progress.description %}
+                                    {{ in_progress.description }}
+                                    {% else %}
+                                    <i>No description available.</i>
+                                    {% endif %}
+                                </p>
+                                <p class="card-text">
+                                    <small class="text-body-secondary">
+                                        Video Length: {{ in_progress.length }}
+                                    </small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {% if in_progress._youtube %}
+                    {% if in_progress._type == 'video' %}
+                    <a href="{{ url_for('video_info', v=in_progress.id) }}" class="stretched-link"></a>
+                    {% elif in_progress._type == 'playlist' %}
+                    <a href="{{ url_for('playlist_info', list=in_progress.id) }}" class="stretched-link"></a>
+                    {% endif %}
+                    {% else %}
+                    <a href="{{ url_for('video_info', v=in_progress._url, yt='no') }}" class="stretched-link"></a>
+                    {% endif %}
                 </div>
-                <div class="col-md-7">
+                {% else %}
+                <div class="card mb-3">
                     <div class="card-body">
-                        <h5 class="card-title">{{ download.title }}</h5>
-                        <p class="card-text">
-                            {% if download.description %}
-                            {{ download.description }}
-                            {% else %}
-                            <i>No description available.</i>
-                            {% endif %}
-                        </p>
-                        <p class="card-text">
-                            <small class="text-body-secondary">
-                            {% if download._type == 'video' %}
-                            Video Length: {{ download.length }}
-                            {% elif download._type == 'playlist' %}
-                            {{ download.length }} videos
-                            {% endif %}
-                            </small>
-                        </p>
+                        <p class="card-text"><strong>No downloads in progress.</strong></p>
                     </div>
                 </div>
-            </div>
-            {% if download._youtube %}
-                {% if download._type == 'video' %}
-                    <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
-                {% elif download._type == 'playlist' %}
-                    <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
                 {% endif %}
-            {% else %}
-                <a href="{{ url_for('video_info', v=download._url, yt='no') }}" class="stretched-link"></a>
-            {% endif %}
-        </div>
-        {% endfor %}
-        {% else %}
-        <div class="card mb-3">
-            <div class="card-body">
-                <p class="card-text"><strong>No recent downloads.</strong></p>
             </div>
-        </div>
-        {% endif %}
-    </div>
-    <div class="col-md-3 col-sm-12">
-        <h3>Recent Searches</h3>
-        {% if recent_searches %}
-        {% for search in recent_searches %}
-        <div class="card mb-3">
-            <div class="row g-0">
-                <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
-                    <img src="{{ search.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+            <div class="col-md-6 col-sm-12">
+                <h3>Queued Downloads</h3>
+                {% if download_queue %}
+                {% for download in download_queue %}
+                <div class="card mb-3">
+                    <div class="row g-0">
+                        <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
+                            <img src="{{ download.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+                        </div>
+                        <div class="col-md-7">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ download.title }}</h5>
+                                <p class="card-text">
+                                    {% if download.description %}
+                                    {{ download.description }}
+                                    {% else %}
+                                    <i>No description available.</i>
+                                    {% endif %}
+                                </p>
+                                <p class="card-text"><small class="text-body-secondary">
+                                    {% if download._type == 'video' %}
+                                    Video Length: {{ download.length }}
+                                    {% elif download._type == 'playlist' %}
+                                    {{ download.length }} videos
+                                    {% endif %}
+                                </small></p>
+                            </div>
+                        </div>
+                    </div>
+                    {% if download._youtube %}
+                        {% if download._type == 'video' %}
+                            <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
+                        {% elif download._type == 'playlist' %}
+                            <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
+                        {% endif %}
+                    {% else %}
+                        <a href="{{ url_for('video_info', v=download._url, yt='no') }}" class="stretched-link"></a>
+                    {% endif %}
                 </div>
-                <div class="col-md-7">
+                {% endfor %}
+                {% else %}
+                <div class="card mb-3">
                     <div class="card-body">
-                        <h5 class="card-title">{{ search.title }}</h5>
-                        <p class="card-text">
-                            {% if search.description %}
-                            {{ search.description }}
-                            {% else %}
-                            <i>No description available.</i>
-                            {% endif %}
-                        </p>
-                        <p class="card-text"><small class="text-body-secondary">
-                            {% if search._type == 'video' %}
-                            Video Length: {{ search.length }}
-                            {% elif search._type == 'playlist' %}
-                            {{ search.length }} videos
-                            {% endif %}
-                        </small></p>
+                        <p class="card-text"><strong>No queued downloads.</strong></p>
                     </div>
                 </div>
+                {% endif %}
             </div>
-            {% if search._youtube %}
-                {% if search._type == 'video' %}
+            <div class="col-md-6 col-sm-12">
+                <h3>Recent Downloads</h3>
+                {% if recent_downloads %}
+                {% for download in recent_downloads %}
+                <div class="card mb-3">
+                    <div class="row g-0">
+                        <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
+                            <img src="{{ download.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+                        </div>
+                        <div class="col-md-7">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ download.title }}</h5>
+                                <p class="card-text">
+                                    {% if download.description %}
+                                    {{ download.description }}
+                                    {% else %}
+                                    <i>No description available.</i>
+                                    {% endif %}
+                                </p>
+                                <p class="card-text">
+                                    <small class="text-body-secondary">
+                                        {% if download._type == 'video' %}
+                                        Video Length: {{ download.length }}
+                                        {% elif download._type == 'playlist' %}
+                                        {{ download.length }} videos
+                                        {% endif %}
+                                    </small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {% if download._youtube %}
+                    {% if download._type == 'video' %}
+                    <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
+                    {% elif download._type == 'playlist' %}
+                    <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
+                    {% endif %}
+                    {% else %}
+                    <a href="{{ url_for('video_info', v=download._url, yt='no') }}" class="stretched-link"></a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <p class="card-text"><strong>No recent downloads.</strong></p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="col-md-6 col-sm-12">
+                <h3>Recent Searches</h3>
+                {% if recent_searches %}
+                {% for search in recent_searches %}
+                <div class="card mb-3">
+                    <div class="row g-0">
+                        <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
+                            <img src="{{ search.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+                        </div>
+                        <div class="col-md-7">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ search.title }}</h5>
+                                <p class="card-text">
+                                    {% if search.description %}
+                                    {{ search.description }}
+                                    {% else %}
+                                    <i>No description available.</i>
+                                    {% endif %}
+                                </p>
+                                <p class="card-text"><small class="text-body-secondary">
+                                    {% if search._type == 'video' %}
+                                    Video Length: {{ search.length }}
+                                    {% elif search._type == 'playlist' %}
+                                    {{ search.length }} videos
+                                    {% endif %}
+                                </small></p>
+                            </div>
+                        </div>
+                    </div>
+                    {% if search._youtube %}
+                    {% if search._type == 'video' %}
                     <a href="{{ url_for('video_info', v=search.id) }}" class="stretched-link"></a>
-                {% elif search._type == 'playlist' %}
+                    {% elif search._type == 'playlist' %}
                     <a href="{{ url_for('playlist_info', list=search.id) }}" class="stretched-link"></a>
-                {% endif %}
-            {% else %}
-                <a href="{{ url_for('video_info', v=search._url, yt='no') }}" class="stretched-link"></a>
-            {% endif %}
-        </div>
-        {% endfor %}
-        {% else %}
-        <div class="card mb-3">
-            <div class="card-body">
-                <p class="card-text"><strong>No recent searches.</strong></p>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    <div class="col-md-3 col-sm-12">
-        <h3>Queued Downloads</h3>
-        {% if download_queue %}
-        {% for download in download_queue %}
-        <div class="card mb-3">
-            <div class="row g-0">
-                <div class="col-md-5 rounded-start d-flex flex-wrap align-items-center" style="background: #000;">
-                    <img src="{{ download.thumbnail }}" class="img-fluid rounded-start" alt="Thumbnail Unavailable">
+                    {% endif %}
+                    {% else %}
+                    <a href="{{ url_for('video_info', v=search._url, yt='no') }}" class="stretched-link"></a>
+                    {% endif %}
                 </div>
-                <div class="col-md-7">
+                {% endfor %}
+                {% else %}
+                <div class="card mb-3">
                     <div class="card-body">
-                        <h5 class="card-title">{{ download.title }}</h5>
-                        <p class="card-text">
-                            {% if download.description %}
-                            {{ download.description }}
-                            {% else %}
-                            <i>No description available.</i>
-                            {% endif %}
-                        </p>
-                        <p class="card-text"><small class="text-body-secondary">
-                            {% if download._type == 'video' %}
-                            Video Length: {{ download.length }}
-                            {% elif download._type == 'playlist' %}
-                            {{ download.length }} videos
-                            {% endif %}
-                        </small></p>
+                        <p class="card-text"><strong>No recent searches.</strong></p>
                     </div>
                 </div>
-            </div>
-            {% if download._youtube %}
-                {% if download._type == 'video' %}
-                    <a href="{{ url_for('video_info', v=download.id) }}" class="stretched-link"></a>
-                {% elif download._type == 'playlist' %}
-                    <a href="{{ url_for('playlist_info', list=download.id) }}" class="stretched-link"></a>
                 {% endif %}
-            {% else %}
-                <a href="{{ url_for('video_info', v=download._url, yt='no') }}" class="stretched-link"></a>
-            {% endif %}
-        </div>
-        {% endfor %}
-        {% else %}
-        <div class="card mb-3">
-            <div class="card-body">
-                <p class="card-text"><strong>No queued downloads.</strong></p>
             </div>
         </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
+
+<script>
+    function updateMasonry() {
+        var elem = document.querySelector('.main-content');
+        var msnry = new Masonry(elem, {
+            itemSelector: '.col-md-6',
+            // stamp: '#inProgress'
+        });
+    }
+    $(window).imagesLoaded(function () {
+        updateMasonry();
+    });
+</script>

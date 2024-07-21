@@ -6,3 +6,4 @@ gunicorn
 ffmpeg-python
 redis
 yt-dlp
+mutagen

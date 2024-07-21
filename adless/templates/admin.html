@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="confirmModalLabel">Confirm Maintenance Action</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmModalBody">
+                    
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a href="#" class="btn btn-primary" id="confirmModalButton">Confirm</a>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <div class="card">
+            <div class="card-body row">
+                <div class="col-12">
+                    <h4 class="card-title">Maintenance Tools</h4>
+                    <hr>
+                </div>
+                <div class="col-9">
+                    <p>
+                        Clears the error log
+                    </p>
+                </div>
+                <div class="col-3">
+                    <a href="#" class="btn btn-sm btn-danger float-end btn-maint" 
+                        data-confirm-target="{{ url_for('api.v1.clear_errors') }}" 
+                        data-confirm-msg="Are you sure you want to clear the error log?"
+                        data-notification-title="Clear Error Log Operation"
+                        data-notification-success="Error log successfully cleared."
+                        data-notification-failed="Error log failed to clear. Check the logs for more information."
+                        data-confirm-class="btn-danger">Clear Error Log</a>
+                </div>
+                <div class="col-12"><hr></div>
+                <div class="col-9">
+                    <p>    
+                        Clears the download queue. Does not cancel any in progress downloads.
+                    </p>
+                </div>
+                <div class="col-3">
+                    <a href="#" class="btn btn-sm btn-danger float-end btn-maint" 
+                        data-confirm-target="{{ url_for('api.v1.clear_queue') }}" 
+                        data-confirm-msg="Are you sure you want to clear the download queue?"
+                        data-notification-title="Clear Download Queue Operation"
+                        data-notification-success="Download queue successfully cleared."
+                        data-notification-failed="Download queue failed to clear. Check the logs for more information."
+                        data-confirm-class="btn-danger">Clear Download Queue</a>
+                </div>
+                <div class="col-12"><hr></div>
+                <div class="col-9">
+                    <p>
+                        Updates the channel/genre tag on all downloads with the current author set in the database.
+                    </p>
+                </div>
+                <div class="col-3">
+                    <a href="#" 
+                        data-confirm-target="{{ url_for('api.v1.write_channels') }}" 
+                        data-confirm-msg="Are you sure you want to write the channel tag to each download?"
+                        data-notification-title="Update Channels Operation"
+                        data-notification-success="Update channels operation successfully queued."
+                        data-notification-failed="Update channels operation failed to queue. Check the logs for more information."
+                        class="btn btn-sm btn-primary float-end btn-maint">Update Tags</a>
+                </div>
+                <div class="col-12"><hr></div>
+                <div class="col-9">
+                    <p>
+                        Prunes the database of any downloads that no longer exist on the filesystem.
+                    </p>
+                </div>
+                <div class="col-3">
+                    <a href="#"
+                        data-confirm-target="{{ url_for('api.v1.prune_removed') }}" 
+                        data-confirm-msg="Are you sure you want to prune removed downloads from the database?" 
+                        data-confirm-class="btn-warning"
+                        data-notification-title="Prune Database Operation"
+                        data-notification-success="Prune operation successfully queued."
+                        data-notification-failed="Prune operation failed to queue. Check the logs for more information."
+                        class="btn btn-sm btn-warning float-end btn-maint">Prune Database</a>
+                </div>
+                <div class="col-12"><hr></div>
+                <div class="col-9">
+                    <p>
+                        Writes video metadata to disk for all downloads. Will run the prune operation first in order to ensure
+                        that no extra data is written to disk. This operation is useful for database failure or corruption for
+                        re-importing any existing downloads.
+                    </p>
+                </div>
+                <div class="col-3">
+                    <a href="#"
+                        data-confirm-target="{{ url_for('api.v1.save_info') }}" 
+                        data-confirm-msg="Are you sure you want to write the metadata for each download to disk?"
+                        data-notification-title="Write Metadata Operation"
+                        data-notification-success="Write metadata operation successfully queued."
+                        data-notification-failed="Write metadata operation failed to queue. Check the logs for more information."
+                        class="btn btn-sm btn-info btn-maint float-end">Write Metadata</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-3 d-flex justify-content-between">
+            <div class="col-2">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ downloads }}</h4>
+                        Available Downloads
+                    </div>
+                </div>
+            </div>
+            <div class="col-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ dls_since_restart }}</h4>
+                        Downloads since Restart
+                    </div>
+                </div>
+            </div>
+            <div class="col-2">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ channels }}</h4>
+                        Channels
+                    </div>
+                </div>
+            </div>
+            <div class="col-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ queued_for_delete }}</h4>
+                        Downloads Queued for Deletion
+                    </div>
+                </div>
+            </div>
+            <div class="col-2">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ queued }}</h4>
+                        Queued Downloads
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-2 d-flex justify-content-center">
+            <div class="col-2">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ videos_in_db | length }}</h4>
+                        Videos in Database
+                    </div>
+                </div>
+            </div>
+            <div class="col-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ queued_maintenance }}</h4>
+                        Queued Maintenance Items
+                    </div>
+                </div>
+            </div>
+            <div class="col-2">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h4 class="card-title">{{ playlists_in_db | length }}</h4>
+                        Playlists in Database
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-12">
+                <h3>Error Log <small class="text-muted">({{ errors | length }})</small></h3>
+            </div>
+            {% for error in errors %}
+            <div class="col-12 mt-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            {% if "action" in error.item %}
+                            Error executing {{ error.item.action }} maintenance action
+                            {% elif "id" in error.item %}
+                            Error downloading video: <a href="{{ url_for('video_info', video_id=error.item.id) }}">{{ get_video_title(error.item.id) }}</a>
+                            {% else %}
+                            Unknown Error
+                            {% endif %}
+                        </h5>
+                        <p>
+                            {{ error.error }}
+                        </p>
+                        {% if error.error_details %}
+                        <hr>
+                        <h6 class="card-title">Error output:</h6>
+                        <pre><code>{{ error.error_details.stderr }}</code></pre>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        No Errors
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <!-- <img src="..." class="rounded me-2" alt="..."> -->
+            <strong class="me-auto" id="notificationTitle"></strong>
+            <!-- <small>11 mins ago</small> -->
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="notificationMessage">
+        </div>
+    </div>    
+</div>
+{% endblock %}
+
+{% block custom_scripts %}
+<script>
+    function notification(title, message) {
+        $('#notificationTitle').html(title);
+        $('#notificationMessage').html(message);
+        var toastElList = [].slice.call(document.querySelectorAll('.toast'));
+        var toastList = toastElList.map(function (toastEl) {
+            return new bootstrap.Toast(toastEl);
+        });
+        toastList.forEach(toast => toast.show());
+    }
+    $(document).ready(function() {
+        $('.btn-maint').click(function(event) {
+            // prevent default action
+            event.preventDefault();
+            console.log($(this).data())
+            var confirmMsg = $(this).data('confirm-msg');
+            var confirmClass = $(this).data('confirm-class');
+            var confirmTarget = $(this).data('confirm-target');
+            var notificationTitle = $(this).data('notification-title');
+            var notificationSuccess = $(this).data('notification-success');
+            var notificationFailed = $(this).data('notification-failed');
+            if (!confirmClass) {
+                confirmClass = 'btn-success';
+            }
+            if (!confirmTarget) {
+                return;
+            }
+            $('#confirmModalBody').html(confirmMsg);
+            $('#confirmModalButton').removeClass().addClass('btn btn-primary ' + confirmClass);
+            var modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            modal.show();
+            $('#confirmModalButton').data('confirm-target', confirmTarget);
+            $('#confirmModalButton').data('notification-title', notificationTitle);
+            $('#confirmModalButton').data('notification-success', notificationSuccess);
+            $('#confirmModalButton').data('notification-failed', notificationFailed);
+        });
+        
+        $('#confirmModalButton').click(function(event) {
+            var confirmTarget = $(this).data('confirm-target');
+            if (!confirmTarget) {
+                return;
+            }
+            $.ajax({
+                url: confirmTarget,
+                type: 'GET',
+                success: function(data) {
+                    $('#confirmModal').modal('hide');
+                    notification($('#confirmModalButton').data('notification-title'), $('#confirmModalButton').data('notification-success'));
+                },
+                error: function(data) {
+                    $('#confirmModal').modal('hide');
+                    notification($('#confirmModalButton').data('notification-title'), $('#confirmModalButton').data('notification-failed'));
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

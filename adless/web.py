@@ -1,9 +1,9 @@
 from datetime import timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_session import Session
-from adless.tools import get_video_info, get_playlist_info, unshorten, get_fs_downloads, get_progress
+from adless.tools import find_existing_channels, get_video, get_video_info, get_playlist_info, get_video_title, unshorten, get_fs_downloads, get_progress
 from adless.api import api
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.parse import parse_qs
 from hashlib import sha1
 import redis
@@ -19,8 +19,15 @@ app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = db
 app.config["ADMIN_PASSWORD"] = os.getenv("ADMIN_PASSWORD", "password")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24))
+app.config["CHANNEL_MODE"] = os.getenv("CHANNEL_MODE", "false").lower() == "true"
 
 Session(app)
+
+@app.context_processor
+def add_template_methods():
+    return {
+        "get_video_title": get_video_title,
+    }
 
 @app.before_request
 def validate_authenticated():
@@ -30,12 +37,17 @@ def validate_authenticated():
         if not session.get("authenticated", False):
             return redirect(url_for("login"))
 
-
 @app.route("/")
 def index():
     recent_search_keys = db.lrange("recent_searches", 0, 9)
     download_queue_keys = db.lrange("download_queue", 0, -1)
     downloads_keys = db.lrange("downloads", 0, 10)
+    in_progress_id = db.get("in_progress")
+    in_progress_info = None
+    if in_progress_id:
+        in_progress_info = get_video_info(in_progress_id.decode("utf-8"))
+        in_progress_info["length"] = str(timedelta(seconds=in_progress_info["length"]))
+        in_progress_info["description"] = in_progress_info["description"][:100] + "..." if len(in_progress_info["description"]) > 100 else in_progress_info["description"]
     recent_searches = []
     download_queue = []
     downloads = []
@@ -61,6 +73,9 @@ def index():
             info["description"] = info["description"][:100] + "..." if len(info["description"]) > 100 else info["description"]
         download_queue.append(info)
     for key in downloads_keys:
+        if not db.exists(key):
+            db.lrem("downloads", 0, key)
+            continue
         info = json.loads(db.get(key))
         if info["_type"] == "video":
             info["length"] = str(timedelta(seconds=info["length"]))
@@ -72,6 +87,7 @@ def index():
         "recent_searches": recent_searches,
         "recent_downloads": downloads,
         "download_queue": download_queue,
+        "in_progress": in_progress_info,
         "page": "home"
     }
     return render_template("index.html", **data)
@@ -137,25 +153,39 @@ def content_info():
         return redirect(url_for("index"))
     
 
-@app.route("/info/video/", methods=["GET"])
-def video_info():
-    video_id = request.args.get("v")
+@app.route("/info/video/", methods=["GET"], defaults={"video_id": None})
+@app.route("/info/video/<video_id>", methods=["GET"])
+def video_info(video_id: str = None):
+    if not video_id:
+        video_id = request.args.get("v")
     _yt = request.args.get("yt", "yes") == "yes"
     bust_cache = request.args.get("bust_cache", "no") == "yes"
-    if _yt:
-        full_url = f"https://www.youtube.com/watch?v={video_id}"
+    custom_title = request.args.get("title", None)
+
+    if not video_id.startswith("video:"):
+        if _yt:
+            full_url = f"https://www.youtube.com/watch?v={video_id}"
+        else:
+            full_url = video_id
         info = get_video_info(full_url, bust_cache=bust_cache)
-        info["length"] = str(timedelta(seconds=info["length"]))
-        info["progress"] = get_progress(info["title"])
+    else:
+        info = get_video_info(video_id, bust_cache=bust_cache)
+    info["length"] = str(timedelta(seconds=info["length"]))
+    info["progress"] = get_progress(info["title"])
+    if custom_title:
+        info["title"] = custom_title.replace("/", "-")
+    if info["_youtube"]:
         return render_template("video_info.html", **info)
     else:
-        custom_title = request.args.get("title", None)
-        info = get_video_info(video_id, bust_cache=bust_cache)
-        info["length"] = str(timedelta(seconds=info["length"]))
-        info["progress"] = get_progress(info["title"])
-        if custom_title:
-            info["title"] = custom_title.replace("/", "-")
         return render_template("off_youtube_info.html", **info)
+
+        # custom_title = request.args.get("title", None)
+        # info = get_video_info(video_id, bust_cache=bust_cache)
+        # info["length"] = str(timedelta(seconds=info["length"]))
+        # info["progress"] = get_progress(info["title"])
+        # if custom_title:
+        #     info["title"] = custom_title.replace("/", "-")
+        # return render_template("off_youtube_info.html", **info)
 
 
 @app.route("/info/playlist/", methods=["GET"])
@@ -174,6 +204,7 @@ def queue():
     content_key = request.args.get("id")
     _yt = request.args.get("yt", "yes") == "yes"
     title = request.args.get("title", None)
+    author = request.args.get("author", "Unknown")
     itag = request.args.get("itag", None)
     only_audio = (request.args.get("only_audio", "no") == "yes")
     if db.exists(content_key):
@@ -181,7 +212,9 @@ def queue():
         if not _yt:
             if title:
                 info["title"] = title.replace("/", "-")
-                db.set(content_key, json.dumps(info))
+            if author:
+                info["author"] = author
+            db.set(content_key, json.dumps(info))
         queue_info = {
             "id": content_key,
             "itag": itag,
@@ -200,18 +233,52 @@ def queue():
         flash("Content not yet indexed. Try searching for this content by non-shortened URL.", "warning")
         return redirect(url_for("index"))
 
-@app.route("/downloads/", methods=["GET"])
-def downloads():
+@app.route("/downloads/", methods=["GET"], defaults={"author": None})
+@app.route("/downloads/<path:author>", methods=["GET"])
+def downloads(author: str = None):
     to_delete = [x.decode('utf-8') for x in db.lrange("delete_queue", 0, -1)]
     dls = []
+    channels = []
     for dl in get_fs_downloads():
+        if "author" not in dl or not dl["author"]:
+            dl["author"] = "Unknown"
+        if dl["author"] not in channels and dl["author"] != "Unknown":
+            channels.append(dl["author"])
+        if author and dl["author"] != author:
+            continue
         if dl["title"] in to_delete:
             dl["delete_queue"] = True
-        if "description" in dl:
+        if "description" in dl and dl["description"]:
             dl["description"] = dl["description"][:100] + "..." if len(dl["description"]) > 100 else dl["description"]
 
         dls.append(dl)
-    return render_template("downloads.html", downloads=dls, page="downloads")
+    channels.append("Unknown")
+    datas = {
+        "downloads": dls,
+        "channels": channels,
+        "channel": author,
+        "page": "downloads"
+    }
+    return render_template("downloads.html", **datas)
+
+@app.route("/admin/", methods=["GET"])
+def admin():
+    errors = []
+    if db.exists("errors"):
+        errors = [json.loads(x) for x in db.lrange("errors", 0, -1)]
+    datas = {
+        "page": "admin",
+        "downloads": len(get_fs_downloads()),
+        "queued": db.llen("download_queue"),
+        "videos_in_db": db.keys("video:*"),
+        "playlists_in_db": db.keys("playlist:*"),
+        "errors": errors,
+        "dls_since_restart": int(db.get("downloads_since_restart")),
+        "queued_for_delete": db.llen("delete_queue"),
+        "queued_maintenance": db.llen("maintenance_queue"),
+        "channels": len(find_existing_channels()),
+    }
+    return render_template("admin.html", **datas)
 
 @app.route("/manifest.json", methods=["GET"])
 def manifest():
@@ -249,3 +316,27 @@ def manifest():
             }
         }
     }
+
+# Error handlers
+
+@app.errorhandler(404)
+def page_not_found(e):
+    datas = {
+        "error": {
+            "level": "warning",
+            "short": "Page not found",
+            "long": "The page you are looking for does not exist."
+        }
+    }
+    return render_template("error.html", **datas), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    datas = {
+        "error": {
+            "level": "danger",
+            "short": "Internal server error",
+            "long": "An internal server error occurred. Please try again later."
+        }
+    }
+    return render_template("error.html", **datas), 500

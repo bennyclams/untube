@@ -29,6 +29,10 @@
                     <label for="title" class="form-label">Title</label>
                     <input type="text" class="form-control" id="title" name="title" value="{{ title }}">
                 </div>
+                <div class="mb-3">
+                    <label for="author" class="form-label">Author</label>
+                    <input type="text" class="form-control" id="author" name="author" value="{% if author %} {{ author }} {% else %} Unknown Author {% endif %}">
+                </div>
                 <button type="submit" class="btn btn-primary float-end">Download</button>
             </form>
         </div>
@@ -43,6 +47,7 @@
     <div class="col-md-6 offset-md-3 mt-3">
         {% if _downloaded %}
         <button type="button" class="btn btn-outline-success" disabled>Downloaded</button>
+        <button type="button" class="btn btn-outline-danger" data-video-id="{{ _keyname }}" id="deleteVideo">Delete</button>
         {% endif %}
         <button class="btn btn-outline-success float-end" {% if _unavailable %}disabled{% endif %} data-bs-toggle="modal" data-bs-target="#downloadModel" type="button">Download...</button>
         <!-- <div class="dropdown float-end">
@@ -71,6 +76,7 @@
             <div class="card-body">
                 <h5 class="card-title">{{ title }}</h5>
                 <h6 class="card-subtitle mb-2 text-body-secondary">Host: {{ host }}</h6>
+                <h6 class="card-subtitle mb-2 text-body-secondary">Creator: {% if author %} <a href="{{ url_for('downloads', author=author) }}">{{ author }}</a> {% else %} Unknown Author {% endif %}</h6>
                 <p class="card-text">
                     {% if description %}
                     <div style="white-space: pre-wrap;">{{ description }}</div>
@@ -158,7 +164,7 @@
 </div>
 {% endblock %}
 {% block custom_scripts %}
-<script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+<!-- <script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script> -->
 <script>
     function formatBytes(bytes, decimals = 2) {
         if (!+bytes) return '0 Bytes'
@@ -172,6 +178,22 @@
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
     }
     $(document).ready(function () {
+        $("#deleteVideo").click(function () {
+            var videoId = $(this).data('video-id');
+            $.ajax({
+                    url: '/api/v1/delete/',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        'videos': [videoId]
+                    }),
+                    success: function (data) {
+                        if (data['status'] == 'ok') {
+                            location.reload();
+                        }
+                    }
+            });
+        });
         const vidIntId = setInterval(function () {
             $.ajax({
                 url: "{{ url_for('api.v1.progress', id=_keyname) }}",

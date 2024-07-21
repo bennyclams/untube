@@ -1,5 +1,6 @@
+import re
 from flask import Blueprint, Response, request, redirect, url_for, flash
-from adless.tools import get_progress
+from adless.tools import find_removed, fix_channel_tags, get_fs_downloads, get_progress, save_video_info
 from pathlib import Path
 import base64
 import shutil
@@ -54,7 +55,7 @@ def thumbnail(video_name):
     video_path = Path(video_dir).joinpath(video_name)
     thumb_path = video_path.joinpath(f"{video_name}.jpg")
     if not thumb_path.exists():
-        return f"Not Found: {thumb_path}", 404
+        thumb_path = Path(__file__).parent.joinpath("static", "thumb_unavailable.jpg")
     with open(thumb_path, "rb") as f:
         thumb_data = f.read()
     response = Response(thumb_data, mimetype="image/jpeg")
@@ -74,3 +75,36 @@ def progress():
         return {"status": "not_started"}
     progress["status"] = "ok"
     return progress
+
+@v1.route("/video_info/<video_id>", methods=["GET"])
+def video_info(video_id):
+    if not db.exists(video_id):
+        return {"status": "error", "message": "Video not found"}
+    video_info = json.loads(db.get(video_id))
+    return video_info
+
+
+@v1.route("/clear_queue/", methods=["GET"])
+def clear_queue():
+    db.delete("download_queue")
+    return {"status": "ok"}
+
+@v1.route("/clear_errors/", methods=["GET"])
+def clear_errors():
+    db.delete("errors")
+    return {"status": "ok"}
+
+@v1.route("/write_channels/", methods=["GET"])
+def write_channels():
+    db.lpush("maintenance_queue", json.dumps({"action": "write_channels"}))
+    return {"status": "ok"}
+
+@v1.route("/prune_removed/", methods=["GET"])
+def prune_removed():
+    db.lpush("maintenance_queue", json.dumps({"action": "prune_removed"}))
+    return {"status": "ok"}
+
+@v1.route("/save_video_info/", methods=["GET"])
+def save_info():
+    db.lpush("maintenance_queue", json.dumps({"action": "save_video_info"}))
+    return {"status": "ok"}
