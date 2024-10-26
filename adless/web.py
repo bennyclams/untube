@@ -226,7 +226,7 @@ def queue():
             if title:
                 info["title"] = title.replace("/", "-")
             if author:
-                info["author"] = author
+                info["author"] = author.strip()
             db.set(content_key, json.dumps(info))
         queue_info = {
             "id": content_key,

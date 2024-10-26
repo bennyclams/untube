@@ -62,7 +62,7 @@ def sanitize_filename(filename: str):
     """
     Sanitize a filename to remove invalid characters.
     """
-    return filename.replace("/", "-").replace(":", "-").replace("?", "").replace("!", "").replace("&", "-").replace("%", "-")
+    return filename.replace("/", "-").replace(":", "-").replace("?", "").replace("!", "").replace("&", "-").replace("%", "-").replace('\u0020', '').strip()
 
 def get_progress(video_name):
     """
