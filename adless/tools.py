@@ -238,6 +238,7 @@ def get_off_youtube_video(video_id: str, destination: str, itag: int, filename: 
     #         mp4.save()
     with open(key_file, "w") as f:
         f.write(video['_keyname'])
+    save_video_info(video['_keyname'])
     db.lpush("downloads", video['_keyname'])
 
 def get_video(video_id: str, destination: str, video_subdir: bool = True, only_audio: bool = False, itag: int = None, filename: str = None, channel_mode: bool = False):
@@ -327,7 +328,7 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
             if "language" in stream and stream["language"] not in language_filter:
                 audio_streams.remove(stream)
         if len(audio_streams) == 0:
-            logger.warn("No audio streams found with language filter: %s, proceeding without filter" % language_filter)
+            logger.warning("No audio streams found with language filter: %s, proceeding without filter" % language_filter)
             audio_streams = old_streams
     audio_streams = sorted(audio_streams, key=lambda x: x["abr"], reverse=True)
     audio_format = audio_streams[0]
@@ -443,6 +444,7 @@ def get_video(video_id: str, destination: str, video_subdir: bool = True, only_a
     key_file = destination.joinpath(f".key")
     with open(key_file, "w") as f:
         f.write(key_name)
+    save_video_info(key_name)
     db.lpush("downloads", key_name)
 
 # def get_playlist_videos(playlist_id: str, destination: str, only_audio: bool = False):
@@ -560,7 +562,7 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
         format_pairs = []
         streams = []
         invalid_streams = []
-        original_formats_by_itag = { stream["format_id"]: stream for stream in video["formats"] }
+        # original_formats_by_itag = { stream["format_id"]: stream for stream in video["formats"] }
         for stream in video["formats"]:
             # if "format_note" not in stream:
             #     print(stream)
@@ -614,6 +616,18 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
                     "fps": stream["fps"] if "fps" in stream else None,
                     "url": stream["url"]
                 })
+            original_formats_by_itag = {}
+            for stream in video["formats"]:
+                if "format_id" in stream:
+                    original_formats_by_itag[stream["format_id"]] = {
+                        "itag": stream["format_id"],
+                        "mime_type": stream["video_ext"],
+                        "height": stream["height"] if "height" in stream else None,
+                        "resolution": stream["resolution"],
+                        "format": stream["format_note"] if "format_note" in stream else None,
+                        "fps": stream["fps"] if "fps" in stream else None,
+                        "url": stream["url"]
+                    }
 
         streams = sorted(streams, key=lambda x: x["resolution"], reverse=True)
         # print("Got video info (%s) ..." % video_id)
@@ -685,6 +699,11 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
         }
     info["_type"] = "video"
     info["_pull_time"] = int(datetime.now().timestamp())
+    for k, v in info.items():
+        print(f"{k}: {type(v)}")
+        if isinstance(v, dict):
+            for k2, v2 in v.items():
+                print(f"    {k2}: {type(v2)}")
     info_dump = json.dumps(info)
     db.set(key_name, info_dump)
     info["_downloaded"] = media_exists(info["title"])
@@ -857,3 +876,32 @@ def update_video_info(video_id: str, new_info: dict = None, bust_cache: bool = F
     key_name = video_info["_keyname"]
     db.set(key_name, json.dumps(video_info))
     return video_info
+
+def key_exists(key: str):
+    """
+    Check if a key exists in Redis.
+    """
+    return db.exists(key)
+
+def archive_request(archive_url: str, media_library: str, media_name: str):
+    """
+    Archive a request in Redis.
+    """
+    archive_url = "%s/api/v1/archive"
+    archive_key = os.getenv("ARCHIVE_API_KEY", "password")
+    request_data = {
+        "media_library": media_library,
+        "media_name": media_name,
+    }
+    headers = {
+        "Authorization": f"Bearer {archive_key}"
+    }
+    res = requests.post(archive_url, json=request_data, headers=headers)
+    return res.json()
+
+def sizeof_fmt(num, suffix="B"):
+    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"

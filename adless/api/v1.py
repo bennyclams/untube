@@ -1,5 +1,5 @@
 import re
-from flask import Blueprint, Response, request, redirect, url_for, flash
+from flask import Blueprint, Response, request, redirect, url_for, flash, current_app
 from adless.tools import find_removed, fix_channel_tags, get_fs_downloads, get_progress, save_video_info
 from pathlib import Path
 import base64
@@ -43,6 +43,16 @@ def delete():
             # video_path = Path(video_dir).joinpath(video_title)
             db.lpush("delete_queue", str(video_title))
     flash("Added %d items to delete queue" % len(videos), "success")
+    return {"status": "ok"}
+
+@v1.route("/archive/", methods=["POST"])
+def archive():
+    videos = request.json.get("videos", [])
+    for video in videos:
+        if db.exists(video):
+            video_info = json.loads(db.get(video))
+            db.rpush(current_app.config['ARCHIVE_QUEUE'], f"{current_app.config['ARCHIVE_LIBRARY']}:{video_info['title']}")
+    flash("Added %d items to archive queue" % len(videos), "success")
     return {"status": "ok"}
 
 @v1.route("/thumbnail/<video_name>/", methods=["GET"])

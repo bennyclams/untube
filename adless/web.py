@@ -1,7 +1,8 @@
 from datetime import timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_session import Session
-from adless.tools import find_existing_channels, get_video, get_video_info, get_playlist_info, get_video_title, unshorten, get_fs_downloads, get_progress
+from adless.archive import get_file_contents, list_archive_files
+from adless.tools import find_existing_channels, get_video, get_video_info, get_playlist_info, get_video_title, key_exists, sizeof_fmt, unshorten, get_fs_downloads, get_progress
 from adless.api import api
 from urllib.parse import urlencode, urlparse
 from urllib.parse import parse_qs
@@ -20,6 +21,13 @@ app.config["SESSION_REDIS"] = db
 app.config["ADMIN_PASSWORD"] = os.getenv("ADMIN_PASSWORD", "password")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24))
 app.config["CHANNEL_MODE"] = os.getenv("CHANNEL_MODE", "false").lower() == "true"
+app.config["ARCHIVE_ENABLED"] = os.getenv("ARCHIVE_ENABLED", "true").lower() == "true"
+app.config["ARCHIVE_QUEUE"] = os.getenv("ARCHIVE_QUEUE", "chronos:archive")
+app.config["PULL_QUEUE"] = os.getenv("PULL_QUEUE", "chronos:pull")
+app.config["ARCHIVE_LIBRARY"] = os.getenv("ARCHIVE_LIBRARY", "youtube")
+app.config["ARCHIVE_URL"] = os.getenv("ARCHIVE_URL", "http://localhost:8080")
+app.config["ARCHIVE_API_KEY"] = os.getenv("ARCHIVE_API_KEY", "password")
+app.config["ARCHIVE_VIEW_KEY"] = os.getenv("ARCHIVE_VIEW_KEY", "password")
 
 Session(app)
 
@@ -27,6 +35,8 @@ Session(app)
 def add_template_methods():
     return {
         "get_video_title": get_video_title,
+        "sizeof_fmt": sizeof_fmt,
+        "archive_enabled": app.config["ARCHIVE_ENABLED"],
     }
 
 @app.before_request
@@ -47,7 +57,10 @@ def index():
     if in_progress_id:
         in_progress_info = get_video_info(in_progress_id.decode("utf-8"))
         in_progress_info["length"] = str(timedelta(seconds=in_progress_info["length"]))
-        in_progress_info["description"] = in_progress_info["description"][:100] + "..." if len(in_progress_info["description"]) > 100 else in_progress_info["description"]
+        if in_progress_info["description"]:
+            in_progress_info["description"] = in_progress_info["description"][:100] + "..." if len(in_progress_info["description"]) > 100 else in_progress_info["description"]
+        else:
+            in_progress_info["description"] = "No description available."
     recent_searches = []
     download_queue = []
     downloads = []
@@ -252,14 +265,34 @@ def downloads(author: str = None):
             dl["description"] = dl["description"][:100] + "..." if len(dl["description"]) > 100 else dl["description"]
 
         dls.append(dl)
+    channels.sort()
     channels.append("Unknown")
     datas = {
         "downloads": dls,
         "channels": channels,
         "channel": author,
-        "page": "downloads"
+        "page": "downloads",
     }
     return render_template("downloads.html", **datas)
+
+@app.route("/archive/", methods=["GET"])
+def archive_catalog():
+    archive_items = list_archive_files()
+    for media_name, files in archive_items.items():
+        for f in files:
+            if f["file_name"] == ".key":
+                if not key_exists(f"archive:{media_name}:key:{f['file_id']}"):
+                    key_content = get_file_contents(f["file_id"])
+                    db.set(f"archive:{media_name}:key:{f['file_id']}", key_content)
+                else:
+                    key_content = db.get(f"archive:{media_name}:key:{f['file_id']}")
+                if key_exists(key_content):
+                    f["cached"] = True
+    datas = {
+        "page": "archive",
+        "archive_items": archive_items,
+    }
+    return render_template("archive.html", **datas)
 
 @app.route("/admin/", methods=["GET"])
 def admin():

@@ -8,18 +8,26 @@ member sites like Patreon or Fourthwall creator sites.
 
 Untube will allow you to download either the best available quality video, or you can choose from a list of available formats. 
 You are able to set a filter via environment variable for formats as well as resolutions, to keep the list of available streams 
-less cluttered. Some youtube channels have audio streams in multiple languages, so there's also an optional language filter. If
+less cluttered. Untube will allow you to view all available formats via an advanced download options dialogue as well.
+Some youtube channels have audio streams in multiple languages, so there's also an optional language filter. If
 you do not specify a language filter, the worker will not differentiate between audio streams in different languages.
 
 The Untube worker will download both the video and audio stream of the video, and then merge them with ffmpeg. 
 The merge uses a copy, which should be fine in most scenarios, but if you have issues with the merge, please open an issue.
+
+* Note that in some cases, Youtube VODs which very recently ended cause an error when the worker tries to pullthem. This seems 
+  to be a yt-dlp limitation and clears up a few moments later.
+* Additionally, sometimes google serves a strange video format that ffmpeg doesn't like to merge, in this case,you can usually 
+  go manually merge the files or sometimes just retrying the download will work. Sometimes usingthe advanced download options to select a specific stream will help with this. 
 
 For off-youtube videos, the worker will attempt to automatically generate a thumbnail for the video with ffmpeg. If this fails,
 the worker will continue and leave a message in the log indicating that the thumbnail could not be generated along with an error.
 
 ## Future Plans
 
-    * Add support for downloading private videos and playlists
+* Add support for downloading private videos and playlists
+    * This should work now when provided with a cookies file (see yt-dlp documentation)
+* Release archiving tool and expand to support at least s3 buckets
 
 ## Quickstart
 The easiest way to get started is to just run the docker-compose provided and mount the plex media directory you want to use for
@@ -41,6 +49,21 @@ VIDEO_DIR | Directory to store downloaded videos | `/tmp/untube`
 FORMAT_FILTER | Filter for available formats | `["mp4", "webm", "ogg", "flv", "3gp", "mkv", "m4a"]`
 RESOLUTION_FILTER | Filter for available resolutions | `[2160, 1920, 1440, 1280, 1080, 960, 720, 480]`
 LANGUAGE_FILTER | Filter for available languages | `None`
+ARCHIVE_ENABLED | Enable archive functionality | `False`
+ARCHIVE_QUEUE | Queue name for archive tasks | `chronos:archive`
+ARCHIVE_LIBRARY | Library name for archiver to use when looking for media | `youtube`
+B2_APPLICATION_KEY_ID | BackBlaze B2 Application Key ID | `None`
+B2_APPLICATION_KEY | BackBlaze B2 Application Key | `None`
 
-Note: Any environment variable which can accept multiple values needs to be specified in a comma separated list of values. For example,
-`FORMAT_FILTER=mp4,webm,ogg,flv,3gp,mkv,m4a`
+Notes:
+* Any environment variable which can accept multiple values needs to be specified in a comma separated list of values. 
+    * For example, `FORMAT_FILTER=mp4,webm,ogg,flv,3gp,mkv,m4a`
+* The BackBlaze environment variables can be excluded if the user running Untube is authenticated via the b2 CLI, however this is unlikely in a docker container. 
+  If these values are not set, Untube will attempt to authenticate via the `.b2_account_info` file in the home directory of the user running the container.
+
+## Archive Functionality
+The archive functionality as of now is very limited and only supports archiving to BackBlaze B2 via a separate tool also created by me called `chronos`, 
+however this tool isn't released yet, so archive functionality is not really useful at the moment.
+
+Currently, archive functionality allows videos to be archived via the downloads page in the same way you can delete them, and once archived, 
+are available to be viewed via the archive catalog page. Next steps here are to implement pulling functionality and storage to S3 buckets.

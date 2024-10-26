@@ -22,11 +22,13 @@
                                     <i>No description available.</i>
                                     {% endif %}
                                 </p>
+                                {% if in_progress.length %}
                                 <p class="card-text">
                                     <small class="text-body-secondary">
                                         Video Length: {{ in_progress.length }}
                                     </small>
                                 </p>
+                                {% endif %}
                             </div>
                         </div>
                     </div>

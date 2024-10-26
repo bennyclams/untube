@@ -35,6 +35,11 @@
                 <li class="nav-item">
                   <a class="nav-link {% if page == 'downloads' %}active{% endif %}" href="/downloads/">Available Downloads</a>
                 </li>
+                {% if archive_enabled %}
+                <li class="nav-item">
+                  <a class="nav-link {% if page == 'archive' %}active{% endif %}" href="/archive/">Archive Catalog</a>
+                </li>
+                {% endif %}
               </ul>
               <ul class="navbar-nav">
                 <li class="nav-item float-end">

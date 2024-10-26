@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mr-auto">Archive Catalog</h5>
+                <input type="text" id="search" placeholder="Search..." class="form-control w-25" />
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for folder, files in archive_items.items() %}
+                <li class="list-group-item">
+                    {{ folder }}
+                    <ul>
+                        {% for file in files %}
+                            <li>{{ file.file_name }} ({{ sizeof_fmt(file.file_size) }}) {% if file.cached %}(Info Cached){% endif %}</li>
+                        {% endfor %}
+                    </ul>
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block custom_scripts %}
+<script>
+    document.getElementById('search').addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const items = document.querySelectorAll('.list-group-item');
+
+        items.forEach(item => {
+            const text = item.textContent.toLowerCase();
+            item.style.display = text.includes(searchTerm) ? '' : 'none';
+        });
+    });
+</script>
+{% endblock %}

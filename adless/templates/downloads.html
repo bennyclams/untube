@@ -4,6 +4,7 @@
 <div class="row d-none" id="optionsRow">
     <div class="col-md-6 offset-md-3">
         <button class="btn btn-danger" id="deleteSelectedDownloads">Delete Selected</button>
+        <button class="btn btn-secondary {% if not archive_enabled %}d-none{% endif %}" id="archiveSelectedDownloads">Archive Selected</button>
     </div>
 </div>
 <div class="row">
@@ -62,6 +63,7 @@
             $('#optionsRow').addClass('d-none');
         }
         $('#deleteSelectedDownloads').text('Delete Selected (' + selectedItems + ')');
+        $('#archiveSelectedDownloads').text('Archive Selected (' + selectedItems + ')');
     }
     function updateMasonry() {
         var elem = document.querySelector('.downloads-content .row');
@@ -97,6 +99,29 @@
                 });
                 $.ajax({
                     url: '/api/v1/delete/',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        'videos': toDelete
+                    }),
+                    success: function (data) {
+                        if (data['status'] == 'ok') {
+                            location.reload();
+                        }
+                    }
+                });
+            }
+        });
+        $('#archiveSelectedDownloads').click(function (e) {
+            e.preventDefault();
+            let selectedDownloads = $('.border-primary');
+            if (selectedDownloads.length > 0) {
+                let toDelete = [];
+                selectedDownloads.each(function (index, element) {
+                    toDelete.push($(element).attr('id'));
+                });
+                $.ajax({
+                    url: '/api/v1/archive/',
                     method: 'POST',
                     contentType: 'application/json',
                     data: JSON.stringify({
