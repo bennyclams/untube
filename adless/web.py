@@ -1,20 +1,23 @@
 from datetime import timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_session import Session
-from adless.archive import get_file_contents, list_archive_files
-from adless.tools import find_existing_channels, get_video, get_video_info, get_playlist_info, get_video_title, key_exists, sizeof_fmt, unshorten, get_fs_downloads, get_progress
+# from adless import archive
+from adless.download import get_video_info, get_playlist_info, get_progress
+from adless.library import find_existing_channels, key_exists, get_fs_downloads
+from adless.tools import get_video_title, sizeof_fmt, unshorten
+from adless.archive import get_archived_media, get_file_contents, list_archive_files
+from adless.config import db
 from adless.api import api
 from urllib.parse import urlencode, urlparse
 from urllib.parse import parse_qs
 from hashlib import sha1
 import redis
 import json
-import os 
+import os
 
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.register_blueprint(api, url_prefix="/api")
-db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379").strip())
 app.config["DEBUG"] = (os.getenv("DEBUG", "false").lower() == "true")
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = db
@@ -204,8 +207,9 @@ def video_info(video_id: str = None):
 @app.route("/info/playlist/", methods=["GET"])
 def playlist_info():
     playlist_id = request.args.get("list")
+    bust_cache = request.args.get("bust_cache", "no") == "yes"
     full_url = f"https://www.youtube.com/playlist?list={playlist_id}"
-    info = get_playlist_info(full_url)
+    info = get_playlist_info(full_url, bust_cache=bust_cache)
     for video in info["videos"]:
         if video["description"]:
             video["description"] = video["description"][:100] + "..." if len(video["description"]) > 100 else video["description"]
@@ -275,11 +279,40 @@ def downloads(author: str = None):
     }
     return render_template("downloads.html", **datas)
 
-@app.route("/archive/", methods=["GET"])
-def archive_catalog():
+@app.route("/archive/", methods=["GET"], defaults={"author": None})
+@app.route("/archive/<path:author>", methods=["GET"])
+def archive_catalog(author: str = None):
+    media_info, channels = get_archived_media(author)
+    # channels = []
+    # for media_name, info in media_info.items():
+    #     if info["author"] not in channels and info["author"] != "Unknown":
+    #         channels.append(info["author"])
+                    
+    datas = {
+        "page": "archive",
+        # "archive_items": archive_items,
+        "media_info": media_info,
+        "channels": channels,
+        "channel": author,
+    }
+    return render_template("archive.html", **datas)
+
+@app.route("/archive/Missing Info/", methods=["GET"])
+def archive_missing_info():
     archive_items = list_archive_files()
+    _, channels = get_archived_media()
+    missing_info = []
     for media_name, files in archive_items.items():
+        missing = True
         for f in files:
+            if f["file_name"] == ".info":
+                if not key_exists(f"archive:{media_name}:info:{f['file_id']}"):
+                    info = json.loads(get_file_contents(f["file_id"]))
+                    db.set(f"archive:{media_name}:info:{f['file_id']}", json.dumps(info))
+                else:
+                    info = json.loads(db.get(f"archive:{media_name}:info:{f['file_id']}"))
+                if info:
+                    missing = False
             if f["file_name"] == ".key":
                 if not key_exists(f"archive:{media_name}:key:{f['file_id']}"):
                     key_content = get_file_contents(f["file_id"])
@@ -288,11 +321,16 @@ def archive_catalog():
                     key_content = db.get(f"archive:{media_name}:key:{f['file_id']}")
                 if key_exists(key_content):
                     f["cached"] = True
+                    missing = False
+        if missing:
+            missing_info.append(media_name)
     datas = {
         "page": "archive",
         "archive_items": archive_items,
+        "missing_info": missing_info,
+        "channels": channels,
     }
-    return render_template("archive.html", **datas)
+    return render_template("archive_missing_info.html", **datas)
 
 @app.route("/admin/", methods=["GET"])
 def admin():

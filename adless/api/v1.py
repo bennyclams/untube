@@ -1,12 +1,15 @@
 import re
 from flask import Blueprint, Response, request, redirect, url_for, flash, current_app
-from adless.tools import find_removed, fix_channel_tags, get_fs_downloads, get_progress, save_video_info
+# from adless.tools import find_removed, fix_channel_tags, get_fs_downloads, get_progress, save_video_info
 from pathlib import Path
 import base64
 import shutil
 import redis
 import json
 import os
+
+from adless.download import get_progress
+from adless.tools import sanitize_filename
 
 v1 = Blueprint("v1", __name__)
 db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
@@ -37,11 +40,11 @@ def delete():
         if db.exists(video):
             video_info = json.loads(db.get(video))
             # video_path = Path(video_dir).joinpath(video_info["title"])
-            db.lpush("delete_queue", str(video_info["title"]))
+            db.lpush("delete_queue", sanitize_filename(video_info["title"]))
         else:
             video_title = base64.b64decode(video).decode("utf-8")
             # video_path = Path(video_dir).joinpath(video_title)
-            db.lpush("delete_queue", str(video_title))
+            db.lpush("delete_queue", sanitize_filename(video_title))
     flash("Added %d items to delete queue" % len(videos), "success")
     return {"status": "ok"}
 
@@ -51,8 +54,18 @@ def archive():
     for video in videos:
         if db.exists(video):
             video_info = json.loads(db.get(video))
-            db.rpush(current_app.config['ARCHIVE_QUEUE'], f"{current_app.config['ARCHIVE_LIBRARY']}:{video_info['title']}")
+            db.rpush(current_app.config['ARCHIVE_QUEUE'], f"{current_app.config['ARCHIVE_LIBRARY']}:{sanitize_filename(video_info['title'])}")
     flash("Added %d items to archive queue" % len(videos), "success")
+    return {"status": "ok"}
+
+@v1.route("/unarchive/", methods=["POST"])
+def unarchive():
+    videos = request.json.get("videos", [])
+    for video in videos:
+        if db.exists(video):
+            video_info = json.loads(db.get(video))
+            db.rpush(current_app.config['PULL_QUEUE'], f"{current_app.config['ARCHIVE_LIBRARY']}:{sanitize_filename(video_info['title'])}")
+    flash("Added %d items to pull queue" % len(videos), "success")
     return {"status": "ok"}
 
 @v1.route("/thumbnail/<video_name>/", methods=["GET"])
@@ -60,12 +73,12 @@ def thumbnail(video_name):
     if db.exists(video_name):
         video_info = json.loads(db.get(video_name))
         video_name = video_info["title"]
+        video_path = Path(video_dir).joinpath(video_name)
+        thumb_path = video_path.joinpath(f"{video_name}.jpg")
+        if not thumb_path.exists():
+            thumb_path = Path(__file__).parent.parent.joinpath("static", "images", "thumb_unavailable.png")
     else:
-        return f"Not Found: {video_name}", 404
-    video_path = Path(video_dir).joinpath(video_name)
-    thumb_path = video_path.joinpath(f"{video_name}.jpg")
-    if not thumb_path.exists():
-        thumb_path = Path(__file__).parent.joinpath("static", "thumb_unavailable.jpg")
+        thumb_path = Path(__file__).parent.parent.joinpath("static", "images", "thumb_unavailable.png")
     with open(thumb_path, "rb") as f:
         thumb_data = f.read()
     response = Response(thumb_data, mimetype="image/jpeg")

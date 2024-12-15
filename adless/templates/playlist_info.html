@@ -30,7 +30,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="row content-options">
+                        <div class="row content-options" id="playlistVideos">
                             {% for video in videos %}
                             {% if not video._unavailable %}
                             <div class="col-4 mb-2 content-item" id="card_{{ video['id'] }}">

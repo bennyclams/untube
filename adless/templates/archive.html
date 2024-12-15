@@ -1,32 +1,63 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row">
+<div class="row" id="optionsRow">
     <div class="col-md-6 offset-md-3">
+        <button class="btn btn-secondary disabled" id="pullSelectedMedia">Pull Selected</button>
+        <button class="btn btn-outline-success float-end" id="selectAll">Select All</button>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-1 offset-md-2">
         <div class="card mt-3">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mr-auto">Archive Catalog</h5>
-                <input type="text" id="search" placeholder="Search..." class="form-control w-25" />
+            <div class="card-header">
+                Channels <a href="{{ url_for('archive_catalog') }}" class="float-end">All</a>
             </div>
-            <ul class="list-group list-group-flush">
-                {% for folder, files in archive_items.items() %}
-                <li class="list-group-item">
-                    {{ folder }}
-                    <ul>
-                        {% for file in files %}
-                            <li>{{ file.file_name }} ({{ sizeof_fmt(file.file_size) }}) {% if file.cached %}(Info Cached){% endif %}</li>
-                        {% endfor %}
-                    </ul>
+            <div class="list-group list-group-flush">
+                {% for c in channels %}
+                <li class="list-group-item {% if c == channel %}active{% endif %}">
+                    <a class="link-underline link-underline-opacity-0 link-underline-opacity-75-hover {% if c == channel %}text-light link-underline-light{% endif %}" href="{{ url_for('archive_catalog', author=c) }}">{{ c }}</a>
                 </li>
+                {% endfor %}
+                <li class="list-group-item">
+                    <a class="link-underline link-underline-opacity-0 link-underline-opacity-75-hover" href="{{ url_for('archive_missing_info') }}">Missing Info</a>
+                </li>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 archive-content">
+        <div class="row">
+            {% for media_name, media in media_info.items() %}
+            <div class="col-md-3 mt-3 archive-item">
+                <div class="card archive-card {% if media.delete_queue %}border-danger{% endif %}" id="{{ media._keyname }}">
+                    {% if not media._unavailable %}
+                    <img src="{{ url_for('api.v1.thumbnail', video_name=media._keyname) }}" class="card-img-top" alt="Video Thumbnail">
+                    {% endif %}
+                    <div class="card-body">
+                        <h5 class="card-title">{{ media.title }}</h5>
+                        <h6 class="card-subtitle mb-2 text-muted">{{ media.author }}</h6>
+                        <p class="card-text">
+                            {% if media.description %}
+                            {{ media.description | truncate(100) }}
+                            {% else %}
+                            <i>No description available.</i>
+                            {% endif %}
+                            <br>
+                            <a href="{{ url_for('video_info', video_id=media._keyname) }}" class="card-link" style="z-index: 1000; position: relative;">More Details</a>
+                        </p>
+                    </div>
+                    <a href="#" class="stretched-link select-media" style="z-index: 998;"></a>
+                    <!-- <a href="#" class="stretched-link select-video"></a> -->
+                </div>
+            </div>
             {% endfor %}
-            </ul>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block custom_scripts %}
-<script>
+<!-- <script>
     document.getElementById('search').addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase();
         const items = document.querySelectorAll('.list-group-item');
@@ -34,6 +65,78 @@
         items.forEach(item => {
             const text = item.textContent.toLowerCase();
             item.style.display = text.includes(searchTerm) ? '' : 'none';
+        });
+    });
+</script> -->
+
+<script>
+    function updateOptionsRow() {
+        var selectedItems = $('.border-primary').length;
+        if (selectedItems > 0) {
+            $('#pullSelectedMedia').text('Pull Selected (' + selectedItems + ')');
+            $("#pullSelectedMedia").removeClass('disabled');
+        } else {
+            $('#pullSelectedMedia').text('Pull Selected');
+            $("#pullSelectedMedia").addClass('disabled');
+        }
+    }
+    function updateMasonry() {
+        var elem = document.querySelector('.archive-content .row');
+        var msnry = new Masonry(elem, {
+            itemSelector: '.col-md-3'
+        });
+    }
+    $(window).imagesLoaded(function () {
+        updateMasonry();
+    });
+    $(document).ready(function () {
+        // updateMasonry();
+        $("#selectAll").click(function (e) {
+            e.preventDefault();
+            if ($('.border-primary').length == $('.archive-item').length) {
+                $('.archive-card').removeClass('border-primary');
+                $("#selectAll").text('Select All');
+            } else {
+                $('.archive-card').addClass('border-primary');
+                $("#selectAll").text('Deselect All');
+            }
+            updateOptionsRow();
+        });
+        $('.select-media').click(function (e) {
+            e.preventDefault();
+            if ($(this).parent().hasClass('border-danger')) {
+                // Don't re-queue a video that's already queued for deletion
+                return;
+            }
+            if ($(this).parent().hasClass('border-primary')) {
+                $(this).parent().removeClass('border-primary');
+            } else {
+                $(this).parent().addClass('border-primary');
+            }
+            updateOptionsRow();
+        });
+        $('#pullSelectedMedia').click(function (e) {
+            e.preventDefault();
+            let selectedMedia = $('.border-primary');
+            if (selectedMedia.length > 0) {
+                let toPull = [];
+                selectedMedia.each(function (index, element) {
+                    toPull.push($(element).attr('id'));
+                });
+                $.ajax({
+                    url: '/api/v1/unarchive/',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        'videos': toPull
+                    }),
+                    success: function (data) {
+                        if (data['status'] == 'ok') {
+                            location.reload();
+                        }
+                    }
+                });
+            }
         });
     });
 </script>

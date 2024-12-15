@@ -1,5 +1,6 @@
 from clilib.builders.app import EasyCLI
-from adless.tools import find_removed, fix_channel_tags, get_playlist_info, get_video, get_off_youtube_video, prune_removed, save_video_info
+from adless.config import db, video_dir, audio_dir
+# from adless.tools import find_removed, fix_channel_tags, get_playlist_info, get_video, get_off_youtube_video, prune_removed, save_video_info
 from pathlib import Path
 import shutil
 import redis
@@ -7,13 +8,16 @@ import time
 import json
 import os
 
-db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
-video_dir = os.getenv("VIDEO_DIR", "/tmp/untube")
-audio_dir = os.getenv("AUDIO_DIR", "/tmp/untube")
+from adless.download import get_off_youtube_video, get_video
+from adless.library import fix_channel_tags, prune_removed, save_video_info
+
+# db = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+# video_dir = os.getenv("VIDEO_DIR", "/tmp/untube")
+# audio_dir = os.getenv("AUDIO_DIR", "/tmp/untube")
 global_channel_mode = os.getenv("CHANNEL_MODE", "false").lower() == "true"
 audio_storage_format = os.getenv("AUDIO_FILENAME", "{title}")
-video_dir = Path(video_dir)
-audio_dir = Path(audio_dir)
+# video_dir = Path(video_dir)
+# audio_dir = Path(audio_dir)
 if not audio_dir.exists():
     audio_dir.mkdir(parents=True)
 if not video_dir.exists():
@@ -47,10 +51,10 @@ def process_delete(item):
     video_path = video_dir / item
     print(f"Deleting {video_path} ...")
     if video_path.exists():
-        key_path = video_path / ".key"
-        if key_path.exists():
-            video_id = key_path.read_text()
-            db.delete(video_id)
+        # key_path = video_path / ".key"
+        # # if key_path.exists():
+        # #     video_id = key_path.read_text()
+        # #     db.delete(video_id)
         shutil.rmtree(video_path)
     else:
         print(f"{video_path} does not exist.")

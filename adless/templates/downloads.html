@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row d-none" id="optionsRow">
+<div class="row" id="optionsRow">
     <div class="col-md-6 offset-md-3">
-        <button class="btn btn-danger" id="deleteSelectedDownloads">Delete Selected</button>
-        <button class="btn btn-secondary {% if not archive_enabled %}d-none{% endif %}" id="archiveSelectedDownloads">Archive Selected</button>
+        <button class="btn btn-danger disabled" id="deleteSelectedDownloads">Delete Selected</button>
+        <button class="btn btn-secondary disabled {% if not archive_enabled %}d-none{% endif %}" id="archiveSelectedDownloads">Archive Selected</button>
+        <button class="btn btn-outline-success float-end" id="selectAll">Select All</button>
     </div>
 </div>
 <div class="row">
@@ -28,7 +29,7 @@
             <div class="col-md-3 mt-3 download-item">
                 <div class="card download-card {% if download.delete_queue %}border-danger{% endif %}" id="{{ download._keyname }}">
                     {% if not download._unavailable %}
-                    <img src="{{ download.thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+                    <img src="{{ url_for('api.v1.thumbnail', video_name=download._keyname) }}" class="card-img-top" alt="Video Thumbnail">
                     {% endif %}
                     <div class="card-body">
                         <h5 class="card-title">{{ download.title }}</h5>
@@ -58,12 +59,16 @@
     function updateOptionsRow() {
         var selectedItems = $('.border-primary').length;
         if (selectedItems > 0) {
-            $('#optionsRow').removeClass('d-none');
+            $('#deleteSelectedDownloads').text('Delete Selected (' + selectedItems + ')');
+            $('#archiveSelectedDownloads').text('Archive Selected (' + selectedItems + ')');
+            $('#deleteSelectedDownloads').removeClass('disabled');
+            $('#archiveSelectedDownloads').removeClass('disabled');
         } else {
-            $('#optionsRow').addClass('d-none');
+            $('#deleteSelectedDownloads').text('Delete Selected');
+            $('#archiveSelectedDownloads').text('Archive Selected');
+            $('#deleteSelectedDownloads').addClass('disabled');
+            $('#archiveSelectedDownloads').addClass('disabled');
         }
-        $('#deleteSelectedDownloads').text('Delete Selected (' + selectedItems + ')');
-        $('#archiveSelectedDownloads').text('Archive Selected (' + selectedItems + ')');
     }
     function updateMasonry() {
         var elem = document.querySelector('.downloads-content .row');
@@ -75,7 +80,17 @@
         updateMasonry();
     });
     $(document).ready(function () {
-        // updateMasonry();
+        $('#selectAll').click(function (e) {
+            e.preventDefault();
+            if ($('.border-primary').length == $('.download-item').length) {
+                $('.download-card').removeClass('border-primary');
+                $("#selectAll").text('Select All');
+            } else {
+                $('.download-card').addClass('border-primary');
+                $("#selectAll").text('Deselect All');
+            }
+            updateOptionsRow();
+        });
         $('.select-video').click(function (e) {
             e.preventDefault();
             if ($(this).parent().hasClass('border-danger')) {
