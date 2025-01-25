@@ -480,6 +480,8 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
         else:
             if cookies_path:
                 print("Using cookies")
+                if not Path(cookies_path).exists():
+                    print(f"Warning: {cookies_path} does not exist.")
                 video = yt_dlp.YoutubeDL({
                     "cookiefile": cookies_path
                 }).extract_info(video_id, download=False)

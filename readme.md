@@ -26,7 +26,7 @@ the worker will continue and leave a message in the log indicating that the thum
 ## Future Plans
 
 * Add support for downloading private videos and playlists
-    * This should work now when provided with a cookies file (see yt-dlp documentation)
+    * This should work now when provided with a cookies file
 * Release archiving tool and expand to support at least s3 buckets
 
 ## Quickstart
@@ -44,6 +44,7 @@ PWA to the video or playlist info page, which will allow you to download the vid
 Variable | Description | Default
 --- | --- | ---
 ADMIN_PASSWORD | Password for the admin user | `password`
+COOKIE_FILE | File containing cookies for private/age restricted videos | `None`
 REDIS_URL | Redis URL for data storage | `redis://localhost:6379`
 VIDEO_DIR | Directory to store downloaded videos | `/tmp/untube`
 FORMAT_FILTER | Filter for available formats | `["mp4", "webm", "ogg", "flv", "3gp", "mkv", "m4a"]`
@@ -60,6 +61,8 @@ Notes:
     * For example, `FORMAT_FILTER=mp4,webm,ogg,flv,3gp,mkv,m4a`
 * The BackBlaze environment variables can be excluded if the user running Untube is authenticated via the b2 CLI, however this is unlikely in a docker container. 
   If these values are not set, Untube will attempt to authenticate via the `.b2_account_info` file in the home directory of the user running the container.
+* If you specify cookies, you need to assign the environment variable to both the web and worker containers. You can use a browser extension to extract the cookies from your browser. It's safest to use an offline extension which will allow you to export only the cookies for the youtube website itself.
+    * It is recommended to mount the cookies file's parent directory rather than the file itself, because the file will be read from and written to over time and a direct file mount will not update properly causing the cookies to become invalid.
 
 ## Archive Functionality
 The archive functionality as of now is very limited and only supports archiving to BackBlaze B2 via a separate tool also created by me called `chronos`, 

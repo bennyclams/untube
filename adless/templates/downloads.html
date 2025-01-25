@@ -2,14 +2,14 @@
 
 {% block content %}
 <div class="row" id="optionsRow">
-    <div class="col-md-6 offset-md-3">
+    <div class="col-12 col-xxl-8 offset-xxl-2">
         <button class="btn btn-danger disabled" id="deleteSelectedDownloads">Delete Selected</button>
         <button class="btn btn-secondary disabled {% if not archive_enabled %}d-none{% endif %}" id="archiveSelectedDownloads">Archive Selected</button>
         <button class="btn btn-outline-success float-end" id="selectAll">Select All</button>
     </div>
 </div>
 <div class="row">
-    <div class="col-md-1 offset-md-2">
+    <div class="col-12 col-xxl-1 offset-xxl-1">
         <div class="card mt-3">
             <div class="card-header">
                 Channels <a href="{{ url_for('downloads') }}" class="float-end">All</a>
@@ -23,7 +23,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6 downloads-content">
+    <div class="col-12 col-xxl-8 downloads-content">
         <div class="row">
             {% for download in downloads %}
             <div class="col-md-3 mt-3 download-item">

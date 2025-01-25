@@ -154,7 +154,7 @@
 </div>
 {% endif %}
 <div class="row">
-    <div class="col-md-6 offset-md-3 mt-3">
+    <div class="col-12 col-xxl-8 offset-xxl-2 mt-3">
         <a href="https://www.youtube.com/watch?v={{ id }}" class="btn btn-outline-danger mr-1" target="_blank" rel="noopener noreferrer">Watch on Youtube</a>
         {% if _downloaded %}
         <button type="button" class="btn btn-outline-success" disabled>Downloaded</button>
@@ -178,7 +178,7 @@
             </ul>
         </div>
     </div>
-    <div class="col-md-6 offset-md-3 mt-3">
+    <div class="col-12 col-xxl-8 offset-xxl-2 mt-3">
         <div class="card">
             {% if not _unavailable %}
             <img src="{{ thumbnail }}" class="card-img-top" alt="Video Thumbnail">
@@ -199,7 +199,7 @@
         </div>
     </div>
     {% if progress %}
-    <div class="col-md-3 col-sm-12 order-first order-md-last mt-3" id="dlCol">
+    <div class="col-12 col-xxl-2 order-first order-md-last mt-3" id="dlCol">
         <div class="card">
             <div class="card-header">
                 Download Progress
@@ -256,7 +256,7 @@
         </div>
     </div>
     {% else %}
-    <div class="col-md-3 col-sm-12 order-first order-md-last mt-3 d-none" id="dlCol">
+    <div class="col-12 col-xxl-2 order-first order-md-last mt-3 d-none" id="dlCol">
         <div class="card">
             <div class="card-header">
                 Download Progress
