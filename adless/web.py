@@ -210,9 +210,9 @@ def playlist_info():
     bust_cache = request.args.get("bust_cache", "no") == "yes"
     full_url = f"https://www.youtube.com/playlist?list={playlist_id}"
     info = get_playlist_info(full_url, bust_cache=bust_cache)
-    for video in info["videos"]:
-        if video["description"]:
-            video["description"] = video["description"][:100] + "..." if len(video["description"]) > 100 else video["description"]
+    # for video in info["videos"]:
+    #     if video["description"]:
+    #         video["description"] = video["description"][:100] + "..." if len(video["description"]) > 100 else video["description"]
     return render_template("playlist_info.html", **info)
 
 

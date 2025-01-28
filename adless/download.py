@@ -406,7 +406,8 @@ def get_playlist_info(playlist_id: str, bust_cache: bool = False):
     # playlist = Playlist(playlist_id)
     playlist = yt_dlp.YoutubeDL({
         "ignoreerrors": True,
-        "cookiefile": cookies_path
+        "cookiefile": cookies_path,
+        "extract_flat": "in_playlist"
     }).extract_info(playlist_id, download=False)
     # return playlist
     info = {
@@ -418,10 +419,12 @@ def get_playlist_info(playlist_id: str, bust_cache: bool = False):
         "author": playlist['uploader'],
         "length": len(playlist['entries']),
         # "views": playlist.views,
-        "videos": [get_video_info(video['original_url'], video, bust_cache=bust_cache) for video in playlist['entries'] if video]
+        # "videos": [get_video_info(video['original_url'], video, bust_cache=bust_cache) for video in playlist['entries'] if video]
+        "videos": [video["id"] for video in playlist['entries'] if video]
     }
-    info["thumbnail"] = info["videos"][0]["thumbnail"]
+    # info["thumbnail"] = info["videos"][0]["thumbnail"]
     info["_type"] = "playlist"
+    info["_youtube"] = True
     info["_pull_time"] = int(datetime.now().timestamp())
     info_dump = json.dumps(info)
     db.set(key_name, info_dump)
@@ -444,6 +447,7 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
     #     real_id = video_id
     #     hashed_url = sha1(video_id.encode("utf-8")).hexdigest()
     #     key_name = f"video:{hashed_url}"
+    original_formats_by_itag = {}
     if video_id.startswith("video:"):
         key_name = video_id
         cached = True
@@ -546,7 +550,6 @@ def get_video_info(video_id: str, entry: dict = None, bust_cache: bool = False):
                     "fps": stream["fps"] if "fps" in stream else None,
                     "url": stream["url"]
                 })
-            original_formats_by_itag = {}
             for stream in video["formats"]:
                 if "format_id" in stream:
                     original_formats_by_itag[stream["format_id"]] = {

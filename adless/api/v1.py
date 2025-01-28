@@ -1,5 +1,6 @@
 import re
 from flask import Blueprint, Response, request, redirect, url_for, flash, current_app
+from adless import download
 # from adless.tools import find_removed, fix_channel_tags, get_fs_downloads, get_progress, save_video_info
 from pathlib import Path
 import base64
@@ -102,7 +103,11 @@ def progress():
 @v1.route("/video_info/<video_id>", methods=["GET"])
 def video_info(video_id):
     if not db.exists(video_id):
-        return {"status": "error", "message": "Video not found"}
+        # return {"status": "error", "message": "Video not found"}
+        video_info = download.get_video_info(video_id)
+        if not video_info:
+            return {"status": "error", "message": "Video not found"}
+        return video_info
     video_info = json.loads(db.get(video_id))
     return video_info
 

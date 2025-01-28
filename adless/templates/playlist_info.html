@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% for video in videos %}
+<input class="video-id" type="hidden" value="{{ video }}">
+{% endfor %}
 <div class="row">
     <div class="col-12 col-xxl-8 offset-xxl-2 mt-3">
         <a href="https://www.youtube.com/playlist?list={{ id }}" class="btn btn-outline-danger mr-1" target="_blank"
@@ -32,27 +35,24 @@
                         </div>
                         <div class="row content-options" id="playlistVideos">
                             {% for video in videos %}
-                            {% if not video._unavailable %}
-                            <div class="col-4 mb-2 content-item" id="card_{{ video['id'] }}">
-                                <div class="card video-card" id="video_{{ video['id'] }}" data-unavailable="{% if _unavailable %}true%{ else %}false{% endif %}" data-keyname="{{ video._keyname }}">
+                            <div class="col-4 mb-2 content-item d-none" id="card_{{ video }}">
+                                <div class="card video-card" id="video_{{ video }}" data-unavailable="{% if _unavailable %}true%{ else %}false{% endif %}" data-keyname="">
                                     <div class="card-header">
-                                        {{ video.title | truncate(30, end=' ...') }}
-                                        <button type="button" class="btn-close float-end remove-item" data-remove="#card_{{ video['id'] }}" aria-label="Close"></button>
+                                        
+                                        <button type="button" class="btn-close float-end remove-item" data-remove="#card_{{ video }}" aria-label="Close"></button>
                                     </div>
-                                    <img src="{{ video.thumbnail }}" class="card-img-top" alt="Video Thumbnail">
+                                    <img src="/static/images/thumb_unavailable.png" class="card-img-top" alt="Video Thumbnail">
                                     <div class="card-body">
                                         <p class="card-text">
                                             <div class="row" style="align-items: center;">
                                                 <div class="col-6">
-                                                    <select class="form-select quality-select" id="qualitySelect_{{ video['id'] }}" aria-label="Video Quality Select">
-                                                        {% for stream in video.streams %}
-                                                        <option value="{{ stream['itag'] }}">{{ stream['resolution'] }}@{{ stream['fps'] }}fps</option>
-                                                        {% endfor %}
+                                                    <select class="form-select quality-select" id="qualitySelect_{{ video }}" aria-label="Video Quality Select">
+
                                                     </select>
                                                 </div>
                                                 <div class="col-6">
                                                     <div class="form-check">
-                                                        <input class="form-check-input audio-only-check" type="checkbox" value="" id="audioOnly_{{ video['id'] }}">
+                                                        <input class="form-check-input audio-only-check" type="checkbox" value="" id="audioOnly_{{ video }}">
                                                         <label class="form-check-label" for="audioOnlyCheck">
                                                             Audio Only
                                                         </label>
@@ -63,7 +63,6 @@
                                     </div>
                                 </div>
                             </div>
-                            {% endif %}
                             {% endfor %}
                         </div>
                     </div>
@@ -86,7 +85,7 @@
     </div>
     <div class="col-12 col-xxl-8 offset-xxl-2 mt-3">
         <div class="card">
-            <img src="{{ thumbnail }}" class="card-img-top" alt="Video Thumbnail Unavailable">
+            <img src="/static/images/thumb_unavailable.png" class="card-img-top" id="playlistImage" alt="Video Thumbnail Unavailable">
             <div class="card-body">
                 <h5 class="card-title">{{ title }} <p class="text-small">{{ author }}</p>
                 </h5>
@@ -104,30 +103,28 @@
     </div>
     <div class="col-12 col-xxl-8 offset-xxl-2">
         <h3 class="mt-3">Videos in this Playlist</h3>
+        <hr>
+        <div class="alert alert-info" id="videoListLoading" role="alert">
+            <div class="spinner-border spinner-border-sm text-info" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="ms-1">Loading Videos...</span>
+             <!-- Loading Videos ... -->
+        </div>            
     </div>
     <div class="col-12 col-xxl-8 offset-xxl-2">
-        <div class="row" data-masonry='{"percentPosition": true }'>
+        <div class="row video-list" data-masonry='{"percentPosition": true }'>
             {% for video in videos %}
-            <div class="col-4 mb-2">
-                <div class="card">
-                    {% if video._unavailable %}
-                    <div class="card-header">
-                        Unavailable
-                    </div>
-                    {% else %}
-                    <img src="{{ video.thumbnail }}" class="card-img-top" alt="Video Thumbnail">
-                    {% endif %}
+            <div class="col-4 mb-2 d-none" id="video_list_{{ video }}">
+                <div class="card" id="video_card_{{ video }}">
+                    <img src="/static/images/thumb_unavailable.png" class="card-img-top" alt="Video Thumbnail">
                     <div class="card-body">
-                        <h5 class="card-title">{{ video.title }}</h5>
-                        <h6 class="card-subtitle mb-2 text-body-secondary">Uploaded By: {{ video.author }}</h6>
+                        <h5 class="card-title"></h5>
+                        <h6 class="card-subtitle mb-2 text-body-secondary"></h6>
                         <p class="card-text">
-                            {% if video.description %}
-                            {{ video.description }}
-                            {% else %}
-                            <i>No description available.</i>
-                            {% endif %}
+
                         </p>
-                        <a href="{{ url_for('video_info', v=video.id) }}" class="stretched-link"></a>
+                        <a href="" class="stretched-link video-card-link"></a>
                     </div>
                 </div>
             </div>
@@ -144,8 +141,82 @@
         let msnry = new Masonry( container, {
             itemSelector: '.content-item'
         });
+        let videoList = document.querySelector('.video-list');
+        let msnry2 = new Masonry( videoList, {
+            itemSelector: '.col-4'
+        });
+    }
+    function sortSelect(selElem) {
+        var tmpAry = new Array();
+        for (var i=0;i<selElem.options.length;i++) {
+            tmpAry[i] = new Array();
+            tmpAry[i][0] = selElem.options[i].text;
+            tmpAry[i][1] = selElem.options[i].value;
+        }
+        tmpAry.sort();
+        while (selElem.options.length > 0) {
+            selElem.options[0] = null;
+        }
+        for (var i=0;i<tmpAry.length;i++) {
+            var op = new Option(tmpAry[i][0], tmpAry[i][1]);
+            selElem.options[i] = op;
+        }
+        return;
+    }
+    function updateVideoInfo(video_info) {
+        let modalCard = $("#video_" + video_info.id);
+        let videoCard = $("#video_card_" + video_info.id);
+        if (video_info._unavailable) {
+            modalCard.addClass("border-danger");
+            modalCard.find(".card-header").text("Unavailable");
+            videoCard.addClass("border-danger");
+            videoCard.find(".card-title").text("Unavailable");
+        } else {
+            modalCard.find(".card-header").text(video_info.title.substring(0, 30) + "...");
+            modalCard.find(".card-img-top").attr("src", video_info.thumbnail);
+            modalCard.data("keyname", video_info._keyname);
+            videoCard.find(".card-title").text(video_info.title);
+            videoCard.find(".card-subtitle").text(video_info.author);
+            videoCard.find(".card-img-top").attr("src", video_info.thumbnail);
+            video_info.streams.forEach(element => {
+                modalCard.find(".quality-select").append(new Option(element.resolution + "@" + element.fps + "fps", element.itag));
+            });
+            modalCard.find(".quality-select").each(function(){
+                $('option', this).sort(function(a,b){
+                    aParts = $(a).text().split("x");
+                    bParts = $(b).text().split("x");
+                    return aParts[0] - bParts[0];
+                }).appendTo(this);
+            });
+            videoCard.find(".card-text").text(video_info.description.substring(0, 100) + "...");
+            videoCard.find(".video-card-link").attr("href", "/info/video/?v=" + video_info.id);
+        }
+        $("#card_" + video_info.id).removeClass("d-none");
+        $("#video_list_" + video_info.id).removeClass("d-none");
+        refreshMasonry();
     }
     $(document).ready(function(){
+        let totalVideos = $(".video-id").length;
+        $(".video-id").each(function(i){
+            let id = $(this).val();
+            $.ajax({
+                type: "GET",
+                url: "/api/v1/video_info/" + id,
+                success: function (data) {
+                    // console.log(data);
+                    if (i == 0) {
+                        $("#playlistImage").attr("src", data.thumbnail);
+                    }
+                    updateVideoInfo(data);
+                    if (i == totalVideos - 1) {
+                        $("#videoListLoading").addClass("d-none");
+                    }
+                },
+                failure: function (errMsg) {
+                    console.log(errMsg);
+                }
+            });
+        });
         $('.quality-select').each(function(){
             let id = $(this).attr("id");
             id = id.split("_");
